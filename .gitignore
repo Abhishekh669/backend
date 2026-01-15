@@ -1,0 +1,46 @@
+# Binaries and build outputs
+/bin/
+/build/
+/dist/
+/out/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go vendor folder
+/vendor/
+
+# Temporary files and logs
+tmp/
+*.log
+build-errors.log
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.DS_Store
+
+# Environment variables and secrets
+# .env
+# .env.local
+# .env.*.local
+
+# Cloudflared credentials and config files (if you want to keep private)
+.cloudflared/*.json
+.cloudflared/config.yml
+
+# Docker files if you want to ignore scripts or containers
+docker-mongo.sh
+cloudflared-mongodb.service
+
+# Ignore compiled Go files
+*.out
+
+# Ignore coverage reports
+coverage.out
+
+# Ignore test binary
+*.test
