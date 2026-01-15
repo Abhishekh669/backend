@@ -26,12 +26,15 @@ func main() {
 	router.Use(cors.New(cors.Config{
 		// AllowOrigins: []string{"http://localhost:3000", "https://kitbmantra.vercel.app"},
 		// AllowAllOrigins: "",
-		AllowOrigins:     []string{"http://localhost:3000", "*"},
+		AllowOrigins:     []string{"http://localhost:3000", "*", "https://rms-gules.vercel.app"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Content-Type", "Authorization", "X-App-Token"},
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+
+	log.Println("🌐 Starting HTTP server on :8080...")
+	log.Println("📡 Server endpoints are now available")
 
 	if err := router.Run(":8080"); err != nil {
 		log.Fatalf("❌ Server failed to start: %v", err)
