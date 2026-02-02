@@ -17,6 +17,20 @@ const (
 	DeleteRawMaterials Permission = "delete:raw_materials"
 	UpdateRawMaterials Permission = "update:raw_materials"
 	ViewRawMaterials   Permission = "view:raw_materials"
+
+	//food category
+	ViewFoodCategory   Permission = "view:food_category"
+	CreateFoodCategory Permission = "create:food_category"
+	UpdateFoodCategory Permission = "update:food_category"
+	DeleteFoodCategory Permission = "delete:food_category"
+
+	//sub cateogry
+	ViewFoodSubCategory Permission = "view:food_subcategory"
+
+	// SubCategory – Write
+	CreateFoodSubCategory Permission = "create:food_subcategory"
+	UpdateFoodSubCategory Permission = "update:food_subcategory"
+	DeleteFoodSubCategory Permission = "delete:food_subcategory"
 )
 
 var RolePermissions = map[models.Role][]Permission{
@@ -35,6 +49,14 @@ var RolePermissions = map[models.Role][]Permission{
 		UpdateRawMaterials,
 		DeleteRawMaterials,
 		// ❌ no DeleteUsers
+		ViewFoodCategory,
+		CreateFoodCategory,
+		UpdateFoodCategory,
+		DeleteFoodCategory,
+		ViewFoodSubCategory,
+		CreateFoodSubCategory,
+		UpdateFoodSubCategory,
+		DeleteFoodSubCategory,
 	},
 
 	models.RoleCashier: {
@@ -42,6 +64,10 @@ var RolePermissions = map[models.Role][]Permission{
 	},
 
 	models.RoleChef: {
+		ViewFoodCategory,
+		UpdateFoodCategory,
+		CreateFoodCategory,
+		DeleteFoodCategory,
 		ViewRawMaterials,
 	},
 

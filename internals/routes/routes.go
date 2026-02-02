@@ -9,4 +9,5 @@ func SetUpRoutes(app *gin.Engine, appConfig *app.App) {
 	apiGroup := app.Group("/api/v1")
 	UserServiceRouter(apiGroup, appConfig)
 	RawMaterialServiceRouter(apiGroup, appConfig)
+	FoodCategoryServiceRouter(apiGroup, appConfig)
 }

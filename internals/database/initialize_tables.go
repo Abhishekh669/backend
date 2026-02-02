@@ -86,7 +86,7 @@ var postgressSchemaOrderedTables = []struct {
 		Name: "categories",
 		Schema: `
 				--create categories table
-			CREATE TABLE categories (
+			CREATE TABLE IF NOT EXISTS categories (
     			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     			name VARCHAR(50) NOT NULL,
     			slug VARCHAR(100) NOT NULL,
@@ -98,12 +98,14 @@ var postgressSchemaOrderedTables = []struct {
     			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     			FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE,
-    			CONSTRAINT chk_max_level CHECK (level <= 5),
-    			CONSTRAINT uq_category_slug UNIQUE (slug, parent_id)
+    			CONSTRAINT chk_max_level CHECK (level <= 5)
 			);
 
-			CREATE INDEX idx_categories_parent ON categories(parent_id);
-			CREATE INDEX idx_categories_slug_parent ON categories(slug, parent_id);
+			CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id);
+			CREATE UNIQUE INDEX IF NOT EXISTS uq_root_category_slug ON categories (slug) WHERE parent_id IS NULL;
+
+			-- Child categories (parent_id IS NOT NULL)
+			CREATE UNIQUE INDEX IF NOT EXISTS uq_child_category_slug ON categories (slug, parent_id) WHERE parent_id IS NOT NULL;
 
 
 		`,
@@ -112,7 +114,7 @@ var postgressSchemaOrderedTables = []struct {
 	{
 		Name: "menu_items",
 		Schema: `
-			CREATE TABLE menu_items (
+			CREATE TABLE IF NOT EXISTS  menu_items (
 				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 				name VARCHAR(100) NOT NULL,
 				description TEXT,
@@ -121,13 +123,13 @@ var postgressSchemaOrderedTables = []struct {
 				is_available BOOLEAN DEFAULT TRUE,
 				image_url VARCHAR(500),
 				display_order INT DEFAULT 0,
-				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     
     			FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
 			);
 
-			CREATE INDEX idx_menu_items_category ON menu_items(category_id);
+			CREATE  INDEX IF NOT EXISTS idx_menu_items_category ON menu_items(category_id);
 
 		`,
 	},

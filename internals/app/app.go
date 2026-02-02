@@ -17,6 +17,10 @@ type App struct {
 	RawMaterialRepo    repository.RawMaterialsRepo
 	RawMaterialService services.RawMaterialService
 	RawMaterialHandler handlers.RawMaterialsHandler
+
+	FoodCategoryRepo    repository.FoodCategoryRepo
+	FoodCategoryService services.FoodCategoryService
+	FoodCategoryHandler handlers.FoodCategoryHandler
 }
 
 func New() (*App, error) {
@@ -35,6 +39,10 @@ func New() (*App, error) {
 	rawMaterialsService := services.NewRawMaterialService(rawMaterialsRepo)
 	rawMaterialsHandler := handlers.NewRawMaterialHandler(rawMaterialsService)
 
+	foodCategoryRepo := repository.NewFoodCategoryRepository()
+	foodCategoryService := services.NewFoodCategoryService(foodCategoryRepo)
+	foodCategoryHandler := handlers.NewFoodCategoryHandler(foodCategoryService)
+
 	return &App{
 		UserRepo:    userRepo,
 		UserService: userService,
@@ -43,5 +51,9 @@ func New() (*App, error) {
 		RawMaterialRepo:    rawMaterialsRepo,
 		RawMaterialService: rawMaterialsService,
 		RawMaterialHandler: *rawMaterialsHandler,
+
+		FoodCategoryRepo:    foodCategoryRepo,
+		FoodCategoryService: foodCategoryService,
+		FoodCategoryHandler: *foodCategoryHandler,
 	}, nil
 }
