@@ -85,26 +85,25 @@ func (h *FoodCategoryHandler) UpdateCategoryHandler(c *gin.Context) {
 }
 
 func (h *FoodCategoryHandler) DeleteMenuItemsHandler(c *gin.Context) {
-	var data DeleteMenuItemsPayload
-	if err := c.ShouldBindJSON(&data); err != nil {
+	var deleteIds DeleteMenuItemsPayload
+	if err := c.ShouldBindJSON(&deleteIds); err != nil {
 		fmt.Println("error in binding", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
 		return
 	}
-
-	if len(data.MenuItemsId) < 1 {
+	if len(deleteIds.MenuItemsId) < 1 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "no menu items selected", "success": false})
 		return
 	}
 
-	err := h.foodCategoryService.DeleteMenuItemsService(c, data.MenuItemsId)
+	err := h.foodCategoryService.DeleteMenuItemsService(c, deleteIds.MenuItemsId)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
 		return
 	}
 	var message string
-	if len(data.MenuItemsId) > 0 {
-		message = fmt.Sprintf(" %d menu items deleted successfully", len(data.MenuItemsId))
+	if len(deleteIds.MenuItemsId) > 0 {
+		message = fmt.Sprintf(" %d menu items deleted successfully", len(deleteIds.MenuItemsId))
 	} else {
 		message = "menu item deleted successfully"
 	}

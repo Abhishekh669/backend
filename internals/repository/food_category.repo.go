@@ -61,7 +61,7 @@ func (r *foodCategoryRepo) UpdateMenuItems(ctx context.Context, menu_item *model
 			image_url = $5,
 			display_order =$6,
 			updated_at = $7
-		WHERE id = $9
+		WHERE id = $8
 	`
 	res, err := r.pool.Exec(ctx, query,
 		menu_item.Name,
@@ -119,6 +119,7 @@ func (r *foodCategoryRepo) UpdateCategory(ctx context.Context, category *models.
 }
 
 func (r *foodCategoryRepo) DeleteMenuItems(ctx context.Context, menuItemIds []string) error {
+	fmt.Println("htis is menu id : ", menuItemIds)
 	if len(menuItemIds) == 0 {
 		return fmt.Errorf("no menu items selected")
 	}
