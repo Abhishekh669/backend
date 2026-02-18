@@ -36,7 +36,7 @@ func (h *RawMaterialsHandler) UpdateRawMaterialsHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "raw materials updated successfully",
+		"message": "raw materials updateded successfully",
 		"success": true,
 	})
 
