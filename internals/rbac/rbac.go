@@ -31,6 +31,13 @@ const (
 	CreateFoodSubCategory Permission = "create:food_subcategory"
 	UpdateFoodSubCategory Permission = "update:food_subcategory"
 	DeleteFoodSubCategory Permission = "delete:food_subcategory"
+
+	// attendance
+	CheckInAttendance  Permission = "checkin:attendance"
+	CheckOutAttendance Permission = "checkout:attendance"
+	ViewAttendance     Permission = "view:attendance"
+	UpdateAttendance   Permission = "update:attendance"
+	DeleteAttendance   Permission = "delete:attendance"
 )
 
 var RolePermissions = map[models.Role][]Permission{
@@ -40,6 +47,9 @@ var RolePermissions = map[models.Role][]Permission{
 	},
 
 	models.RoleManager: {
+		CheckInAttendance,
+		CheckOutAttendance,
+		ViewAttendance,
 		ViewUsers,
 		CreateUsers,
 		UpdateUsers,
@@ -60,15 +70,25 @@ var RolePermissions = map[models.Role][]Permission{
 	},
 
 	models.RoleCashier: {
+		ViewAttendance,
 		// ❌ no user management
 	},
 
 	models.RoleChef: {
+		ViewAttendance,
 		ViewFoodCategory,
 		UpdateFoodCategory,
 		CreateFoodCategory,
 		DeleteFoodCategory,
 		ViewRawMaterials,
+	},
+
+	models.RoleDeliveryStaff: {
+		ViewAttendance,
+	},
+
+	models.RoleWaiter: {
+		ViewAttendance,
 	},
 
 	models.RoleCustomer: {},

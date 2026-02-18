@@ -133,6 +133,43 @@ var postgressSchemaOrderedTables = []struct {
 
 		`,
 	},
+	{
+		Name: "attendance",
+		Schema: `
+		-- Create ENUM type first
+		DO $$ BEGIN
+			CREATE TYPE attendance_status AS ENUM (
+				'present', 
+				'absent', 
+				'late', 
+				'half_day', 
+				'leave'
+			);
+		EXCEPTION
+			WHEN duplicate_object THEN NULL;
+		END $$;
+
+		-- Then create the table
+		CREATE TABLE IF NOT EXISTS attendance (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			employee_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			work_date DATE NOT NULL,
+			check_in_time TIMESTAMPTZ,
+			check_out_time TIMESTAMPTZ,
+			need_review BOOLEAN DEFAULT FALSE,
+			status attendance_status NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT uq_attendance_employee_date UNIQUE (employee_id, work_date)
+		);
+
+		-- Composite index (better than separate ones)
+		CREATE INDEX IF NOT EXISTS idx_attendance_employee_date 
+		ON attendance(employee_id, work_date);
+
+		CREATE INDEX IF NOT EXISTS idx_attendance_work_date ON attendance(work_date);
+	`,
+	},
 }
 
 func CreatePostgresTables(ctx context.Context, postgresPool *pgxpool.Pool) error {

@@ -10,4 +10,5 @@ func SetUpRoutes(app *gin.Engine, appConfig *app.App) {
 	UserServiceRouter(apiGroup, appConfig)
 	RawMaterialServiceRouter(apiGroup, appConfig)
 	FoodCategoryServiceRouter(apiGroup, appConfig)
+	AttendanceServiceRouter(apiGroup, appConfig)
 }
