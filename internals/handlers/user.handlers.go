@@ -21,6 +21,24 @@ var (
 	defaultOffset = 0
 )
 
+func (h *UserHandler) GetUserByNameHandler(c *gin.Context) {
+	userName := c.Query("userName")
+	if userName == "" {
+		c.JSON(http.StatusOK, gin.H{"success": true, "users": nil})
+		return
+	}
+	users, err := h.userService.GetUserByNameService(c, &userName)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"users":   users,
+		"success": true,
+	})
+}
+
 func (h *UserHandler) UpdateUserHandler(c *gin.Context) {
 	var data models.UpdateUserType
 	if err := c.ShouldBindJSON(&data); err != nil {

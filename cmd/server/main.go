@@ -7,6 +7,7 @@ import (
 	"github.com/Abhishekh669/backend/internals/app"
 	"github.com/Abhishekh669/backend/internals/config"
 	"github.com/Abhishekh669/backend/internals/database"
+	"github.com/Abhishekh669/backend/internals/jobs"
 	"github.com/Abhishekh669/backend/internals/routes"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -55,6 +56,7 @@ func main() {
 	})
 
 	routes.SetUpRoutes(router, app)
+	jobs.StartDailyAttendanceReview(app.AttendanceRepo)
 
 	log.Println("🌐 Starting HTTP server on :8080...")
 	log.Println("📡 Server endpoints are now available")

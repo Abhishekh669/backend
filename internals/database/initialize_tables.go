@@ -170,6 +170,33 @@ var postgressSchemaOrderedTables = []struct {
 		CREATE INDEX IF NOT EXISTS idx_attendance_work_date ON attendance(work_date);
 	`,
 	},
+	{
+		Name: "attendance_leave",
+		Schema: `
+    DO $$ BEGIN
+        CREATE TYPE leave_status AS ENUM ('pending', 'approved', 'rejected');
+    EXCEPTION
+        WHEN duplicate_object THEN NULL;
+    END $$;
+
+    CREATE TABLE IF NOT EXISTS attendance_leave (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        employee_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        checked_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        start_date TIMESTAMPTZ NOT NULL,
+        end_date TIMESTAMPTZ NOT NULL,
+        message TEXT NOT NULL,
+        supervisor_message TEXT,
+        status leave_status NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        
+        CONSTRAINT chk_leave_dates CHECK (end_date >= start_date),
+        -- Prevent multiple leaves starting on the same day
+        CONSTRAINT uq_employee_start_date UNIQUE (employee_id, start_date)
+    );
+    `,
+	},
 }
 
 func CreatePostgresTables(ctx context.Context, postgresPool *pgxpool.Pool) error {

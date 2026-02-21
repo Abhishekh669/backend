@@ -49,6 +49,7 @@ type UserStats struct {
 // If you want to include actual users from last week
 
 type UserRepo interface {
+	GetUserDataByName(ctx context.Context, userName string) ([]models.UserTypeForAttendance, error)
 	UpdateUser(ctx context.Context, user *models.UpdateUserType) error
 	DeleteUser(c context.Context, userIds []string, requesterRole models.Role) error
 	CreateNewUser(ctx context.Context, user *models.CreateUserType) error
@@ -68,6 +69,67 @@ var (
 	ErrEmailExists = errors.New("email already exists")
 	ErrPhoneExists = errors.New("phone number already exists")
 )
+
+func (r *userRepo) GetUserDataByName(ctx context.Context, userName string) ([]models.UserTypeForAttendance, error) {
+	// Define the query to fetch user data
+	fmt.Println("this is search term: ", userName)
+
+	query := `
+        SELECT 
+			id,
+            name,
+            email,
+            phone,
+            is_active,
+            image
+        FROM users
+        WHERE 
+            name ILIKE $1 OR 
+            email ILIKE $1 OR 
+            phone ILIKE $1
+        ORDER BY name
+    `
+
+	// Execute the query with wildcard search
+	searchPattern := "%" + userName + "%"
+	rows, err := r.pool.Query(ctx, query, searchPattern)
+	if err != nil {
+		return nil, fmt.Errorf("error querying users by name, email, or phone: %w", err)
+	}
+	defer rows.Close()
+
+	// Slice to hold the results
+	var users []models.UserTypeForAttendance
+
+	// Iterate through the rows
+	for rows.Next() {
+		var user models.UserTypeForAttendance
+
+		// Scan the row into the user struct
+		err := rows.Scan(
+			&user.Id,
+			&user.Name,
+			&user.Email,
+			&user.Phone,
+			&user.IsActive,
+			&user.Image,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error scanning user row: %w", err)
+		}
+
+		users = append(users, user)
+	}
+
+	fmt.Println("this is users found: ", users)
+
+	// Check for errors from iterating over rows
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("error iterating user rows: %w", rows.Err())
+	}
+
+	return users, nil
+}
 
 func (r *userRepo) UpdateUser(ctx context.Context, user *models.UpdateUserType) error {
 	var (
@@ -241,7 +303,7 @@ func (r *userRepo) CreateNewUser(
 		user.Gender,
 		user.Phone,
 		user.Salary,
-		true,
+		false,
 		time.Now().UnixMilli(),
 	)
 

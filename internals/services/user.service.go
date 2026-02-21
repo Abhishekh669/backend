@@ -13,6 +13,7 @@ import (
 )
 
 type UserService interface {
+	GetUserByNameService(c *gin.Context, userName *string) ([]models.UserTypeForAttendance, error)
 	UpdateUserService(c *gin.Context, user *models.UpdateUserType) error
 	DeleteUserService(c *gin.Context, userIds []string) error
 	CreateNewUserService(c *gin.Context, user *models.CreateUserType) error
@@ -23,6 +24,15 @@ type UserService interface {
 
 type userService struct {
 	repo repository.UserRepo
+}
+
+func (s *userService) GetUserByNameService(c *gin.Context, userName *string) ([]models.UserTypeForAttendance, error) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewUsers)
+	if err != nil {
+		return nil, errors.New("user not authorized")
+	}
+
+	return s.repo.GetUserDataByName(c.Request.Context(), *userName)
 }
 
 func (s *userService) UpdateUserService(c *gin.Context, user *models.UpdateUserType) error {

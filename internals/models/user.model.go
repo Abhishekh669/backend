@@ -100,3 +100,12 @@ func ParseRole(roleStr string) (Role, error) {
 		return "", errors.New("invalid role")
 	}
 }
+
+type UserTypeForAttendance struct {
+	Id       string  `json:"id"`
+	Name     string  `json:"name"`
+	Email    string  `json:"email"`
+	Phone    string  `json:"phone"`
+	IsActive bool    `json:"is_active"`
+	Image    *string `json:"image,omitempty"`
+}

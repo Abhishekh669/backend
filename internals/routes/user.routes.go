@@ -14,4 +14,5 @@ func UserServiceRouter(router *gin.RouterGroup, app *app.App) {
 	userServiceRoute.GET("/get-user-from-token", app.UserHandler.GetUserFromTokenHandler)
 	userServiceRoute.GET("/get-all-users", middlewares.UserMiddleware(), app.UserHandler.GetUsersListHandler)
 	userServiceRoute.PUT("/update-user", middlewares.UserMiddleware(), app.UserHandler.UpdateUserHandler)
+	userServiceRoute.GET("/get-users-by-name", middlewares.UserMiddleware(), app.UserHandler.GetUserByNameHandler)
 }

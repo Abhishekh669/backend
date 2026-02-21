@@ -38,6 +38,11 @@ const (
 	ViewAttendance     Permission = "view:attendance"
 	UpdateAttendance   Permission = "update:attendance"
 	DeleteAttendance   Permission = "delete:attendance"
+
+	ViewLeaveRequest   Permission = "view:leave_request"
+	DeleteLeaveRequest Permission = "delete:leave_reqeust"
+	UpdateLeaveRequest Permission = "update:leave_request"
+	CancelLeaveRequest Permission = "update:cancel_leave_request"
 )
 
 var RolePermissions = map[models.Role][]Permission{
@@ -47,6 +52,10 @@ var RolePermissions = map[models.Role][]Permission{
 	},
 
 	models.RoleManager: {
+		CancelLeaveRequest,
+		ViewLeaveRequest,
+		UpdateLeaveRequest,
+		DeleteLeaveRequest,
 		CheckInAttendance,
 		CheckOutAttendance,
 		ViewAttendance,
@@ -70,11 +79,14 @@ var RolePermissions = map[models.Role][]Permission{
 	},
 
 	models.RoleCashier: {
+		CancelLeaveRequest,
 		ViewAttendance,
+
 		// ❌ no user management
 	},
 
 	models.RoleChef: {
+		CancelLeaveRequest,
 		ViewAttendance,
 		ViewFoodCategory,
 		UpdateFoodCategory,
@@ -84,10 +96,12 @@ var RolePermissions = map[models.Role][]Permission{
 	},
 
 	models.RoleDeliveryStaff: {
+		CancelLeaveRequest,
 		ViewAttendance,
 	},
 
 	models.RoleWaiter: {
+		CancelLeaveRequest,
 		ViewAttendance,
 	},
 
