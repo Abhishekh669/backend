@@ -148,3 +148,19 @@ type UpdateAttendanceLeave struct {
 	SupervisorMessage *string     `json:"supervisor_message,omitempty"`
 	Status            LeaveStatus `json:"status"`
 }
+
+type AttendanceLeaveResponse struct {
+	ID                uuid.UUID   `json:"id"`
+	EmployeeID        uuid.UUID   `json:"employee_id"`
+	EmployeeName      string      `json:"employee_name"`
+	EmployeeEmail     string      `json:"employee_email"`
+	EmployeeImage     *string     `json:"employee_image"`
+	CheckedBy         *uuid.UUID  `json:"checked_by,omitempty"`
+	StartDate         time.Time   `json:"start_date"`
+	EndDate           time.Time   `json:"end_date"`
+	Message           string      `json:"message"`
+	SupervisorMessage *string     `json:"supervisor_message,omitempty"`
+	Status            LeaveStatus `json:"status"`
+	CreatedAt         time.Time   `json:"created_at"`
+	UpdatedAt         time.Time   `json:"updated_at"`
+}

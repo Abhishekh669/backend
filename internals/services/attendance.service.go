@@ -41,6 +41,15 @@ func GetUserIDFromContext(c *gin.Context) (uuid.UUID, error) {
 	return userID, nil
 }
 
+func (s *attendanceService) GetAttendanceRequestService(c *gin.Context) ([]models.AttendanceLeaveResponse, error) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewLeaveRequest)
+	if err != nil {
+		return nil, errors.New("user not authorized")
+	}
+	return s.repo.GetAttendanceRequest(c.Request.Context())
+
+}
+
 func (s *attendanceService) CancelLeaveRequest(
 	c *gin.Context,
 	leaveId *uuid.UUID,
@@ -55,6 +64,8 @@ func (s *attendanceService) CancelLeaveRequest(
 	if err != nil {
 		return errors.New("failed to cancel request")
 	}
+
+	// TODO  : later add sending mail and deleting the attendance leave
 
 	return s.repo.CancelLeaveRequest(
 		c.Request.Context(),

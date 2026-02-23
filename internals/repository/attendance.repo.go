@@ -17,6 +17,7 @@ import (
 )
 
 type AttendanceRepo interface {
+	GetAttendanceRequest(c context.Context) ([]models.AttendanceLeaveResponse, error)
 	CancelLeaveRequest(c context.Context, leaveId *uuid.UUID, requesterId *uuid.UUID) error
 	DeleteLeaveRequest(c context.Context, leaveId *uuid.UUID) error
 	UpdateLeaveRequest(c context.Context, req *models.UpdateAttendanceLeave) error
@@ -32,6 +33,75 @@ type AttendanceRepo interface {
 
 type attendanceRepo struct {
 	pool *pgxpool.Pool
+}
+
+func (r *attendanceRepo) GetAttendanceRequest(c context.Context) ([]models.AttendanceLeaveResponse, error) {
+	var responses []models.AttendanceLeaveResponse
+
+	query := `
+        SELECT 
+            al.id,
+            al.employee_id,
+            u.name as employee_name,
+            u.email as employee_email,
+            u.image as employee_image,
+            al.checked_by,
+            al.start_date,
+            al.end_date,
+            al.message,
+            al.supervisor_message,
+            al.status,
+            al.created_at,
+            al.updated_at
+        FROM attendance_leave al
+        LEFT JOIN users u ON al.employee_id = u.id
+        ORDER BY al.created_at DESC
+    `
+
+	rows, err := r.pool.Query(c, query)
+	if err != nil {
+		return nil, fmt.Errorf("error querying attendance requests: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var resp models.AttendanceLeaveResponse
+		var employeeImage *string
+		var checkedBy *uuid.UUID
+		var supervisorMessage *string
+
+		err := rows.Scan(
+			&resp.ID,
+			&resp.EmployeeID,
+			&resp.EmployeeName,
+			&resp.EmployeeEmail,
+			&employeeImage,
+			&checkedBy,
+			&resp.StartDate,
+			&resp.EndDate,
+			&resp.Message,
+			&supervisorMessage,
+			&resp.Status,
+			&resp.CreatedAt,
+			&resp.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("error scanning attendance request: %w", err)
+		}
+
+		// Assign nullable fields directly (pgx/v5 handles NULLs by setting pointers to nil)
+		resp.EmployeeImage = employeeImage
+		resp.CheckedBy = checkedBy
+		resp.SupervisorMessage = supervisorMessage
+
+		responses = append(responses, resp)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating attendance requests: %w", err)
+	}
+
+	return responses, nil
 }
 
 func (r *attendanceRepo) CancelLeaveRequest(c context.Context, leaveId *uuid.UUID, requesterId *uuid.UUID) error {
