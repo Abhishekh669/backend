@@ -24,6 +24,8 @@ type GetCategoriesBySlug struct {
 }
 
 type FoodCategoryRepo interface {
+	GetAllCategoriesFromDB(ctx context.Context) ([]models.CategoryCache, error)
+	GetAllMenuItemsFromDB(ctx context.Context) ([]models.MenuItemCache, error)
 	UpdateMenuItems(ctx context.Context, menu_item *models.UpdateMenuItemType) error
 	UpdateCategory(ctx context.Context, category *models.UpdateCategoryType) error
 	DeleteMenuItems(ctx context.Context, menuItemIds []string) error
@@ -43,6 +45,132 @@ func slugify(s string) string {
 	re := regexp.MustCompile(`[^a-z0-9]+`)
 	s = re.ReplaceAllString(s, "-")
 	return strings.Trim(s, "-")
+}
+
+func (r *foodCategoryRepo) GetAllCategoriesFromDB(ctx context.Context) ([]models.CategoryCache, error) {
+
+	query := `
+		SELECT
+			id,
+			name,
+			slug,
+			parent_id,
+			level,
+			is_active,
+			display_order,
+			created_at,
+			updated_at
+		FROM categories
+		ORDER BY display_order ASC
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	categories := make([]models.CategoryCache, 0)
+
+	for rows.Next() {
+		var dbCat models.Category
+
+		err := rows.Scan(
+			&dbCat.ID,
+			&dbCat.Name,
+			&dbCat.Slug,
+			&dbCat.ParentID,
+			&dbCat.Level,
+			&dbCat.IsActive,
+			&dbCat.DisplayOrder,
+			&dbCat.CreatedAt,
+			&dbCat.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Convert DB → Cache model
+		categories = append(categories, models.CategoryCache{
+			ID:           dbCat.ID,
+			Name:         dbCat.Name,
+			Slug:         dbCat.Slug,
+			ParentID:     dbCat.ParentID,
+			Level:        dbCat.Level,
+			IsActive:     dbCat.IsActive,
+			DisplayOrder: dbCat.DisplayOrder,
+		})
+	}
+
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+
+	return categories, nil
+}
+
+func (r *foodCategoryRepo) GetAllMenuItemsFromDB(ctx context.Context) ([]models.MenuItemCache, error) {
+
+	query := `
+		SELECT
+			id,
+			name,
+			description,
+			price,
+			category_id,
+			is_available,
+			image_url,
+			display_order,
+			created_at,
+			updated_at
+		FROM menu_items
+		ORDER BY display_order ASC
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]models.MenuItemCache, 0)
+
+	for rows.Next() {
+		var dbItem models.MenuItem
+
+		err := rows.Scan(
+			&dbItem.ID,
+			&dbItem.Name,
+			&dbItem.Description,
+			&dbItem.Price,
+			&dbItem.CategoryID,
+			&dbItem.IsAvailable,
+			&dbItem.ImageURL,
+			&dbItem.DisplayOrder,
+			&dbItem.CreatedAt,
+			&dbItem.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		// Convert DB → Cache model
+		items = append(items, models.MenuItemCache{
+			ID:          dbItem.ID,
+			Name:        dbItem.Name,
+			Description: dbItem.Description,
+			Price:       dbItem.Price,
+			CategoryID:  dbItem.CategoryID,
+			IsAvailable: dbItem.IsAvailable,
+			ImageURL:    dbItem.ImageURL,
+		})
+	}
+
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+
+	return items, nil
 }
 
 func (r *foodCategoryRepo) UpdateMenuItems(ctx context.Context, menu_item *models.UpdateMenuItemType) error {

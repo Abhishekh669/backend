@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
 	"time"
 
+	"github.com/Abhishekh669/backend/internals/algorithm"
 	"github.com/Abhishekh669/backend/internals/app"
 	"github.com/Abhishekh669/backend/internals/config"
 	"github.com/Abhishekh669/backend/internals/database"
@@ -55,7 +58,32 @@ func main() {
 		c.JSON(200, gin.H{"pong": "pong"})
 	})
 
-	routes.SetUpRoutes(router, app)
+	newCache := algorithm.NewMenuCache()
+	foodCategories, err := app.FoodCategoryRepo.GetAllCategoriesFromDB(context.Background())
+	if err != nil {
+		log.Println("Error in getting food categories")
+
+	}
+
+	menuItems, err := app.FoodCategoryRepo.GetAllMenuItemsFromDB(context.Background())
+	if err != nil {
+		log.Println("error in getting menu times ")
+
+	}
+	newCache.ReloadFromDB(foodCategories, menuItems)
+	router.GET("/get-menu-n-categories", func(c *gin.Context) {
+
+		categories, categoryChildren, menuItems :=
+			newCache.GetFullMenuSnapshot()
+
+		c.JSON(http.StatusOK, gin.H{
+			"success":           true,
+			"categories":        categories,
+			"category_children": categoryChildren,
+			"menu_items":        menuItems,
+		})
+	})
+	routes.SetUpRoutes(router, app, newCache)
 	jobs.StartDailyAttendanceReview(app.AttendanceRepo)
 
 	log.Println("🌐 Starting HTTP server on :8080...")
