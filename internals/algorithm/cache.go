@@ -1,10 +1,13 @@
 package algorithm
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/Abhishekh669/backend/internals/models"
+	"github.com/Abhishekh669/backend/internals/repository"
 	"github.com/gofrs/uuid"
 )
 
@@ -13,13 +16,15 @@ type MenuCache struct {
 	Categories       []models.CategoryCache
 	CategoryChildren map[uuid.UUID][]uuid.UUID
 	ItemsByCategory  map[uuid.UUID][]models.MenuItemCache
+	repo             repository.FoodCategoryRepo
 }
 
-func NewMenuCache() *MenuCache {
+func NewMenuCache(repo repository.FoodCategoryRepo) *MenuCache {
 	return &MenuCache{
 		Categories:       []models.CategoryCache{},
 		CategoryChildren: make(map[uuid.UUID][]uuid.UUID),
 		ItemsByCategory:  make(map[uuid.UUID][]models.MenuItemCache),
+		repo:             repo,
 	}
 }
 
@@ -27,25 +32,33 @@ func NewMenuCache() *MenuCache {
    LOAD / RELOAD
 ========================= */
 
-func (c *MenuCache) ReloadFromDB(
-	categories []models.CategoryCache,
-	menuItems []models.MenuItemCache,
-) {
+func (c *MenuCache) ReloadFromDB() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	cat, err := c.repo.GetAllCategoriesFromDB(context.Background())
 
-	c.Categories = categories
+	if err != nil {
+		fmt.Println("failed to load categgory")
+		return
+	}
+
+	menu, err := c.repo.GetAllMenuItemsFromDB(context.Background())
+	if err != nil {
+		fmt.Println("failed to load menu items")
+		return
+	}
+	c.Categories = cat
 	c.CategoryChildren = make(map[uuid.UUID][]uuid.UUID)
 	c.ItemsByCategory = make(map[uuid.UUID][]models.MenuItemCache)
 
-	for _, cat := range categories {
+	for _, cat := range cat {
 		if cat.ParentID != nil {
 			c.CategoryChildren[*cat.ParentID] =
 				append(c.CategoryChildren[*cat.ParentID], cat.ID)
 		}
 	}
 
-	for _, item := range menuItems {
+	for _, item := range menu {
 		c.ItemsByCategory[item.CategoryID] =
 			append(c.ItemsByCategory[item.CategoryID], item)
 	}

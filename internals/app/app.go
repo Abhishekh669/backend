@@ -25,6 +25,10 @@ type App struct {
 	AttendanceRepo    repository.AttendanceRepo
 	AttendanceService services.AttendanceService
 	AttendanceHandler handlers.AttendanceHandler
+
+	TableRepo    repository.TableRepo
+	TableService services.TableService
+	TableHandler handlers.TableHandler
 }
 
 func New() (*App, error) {
@@ -51,6 +55,10 @@ func New() (*App, error) {
 	attendanceService := services.NewAttendanceService(attendanceRepo)
 	attendanceHandler := handlers.NewAttendanceHandler(attendanceService)
 
+	tableRepo := repository.NewTableRepository()
+	tableService := services.NewTableService(tableRepo)
+	tableHandler := handlers.NewTableHandler(tableService)
+
 	return &App{
 		UserRepo:    userRepo,
 		UserService: userService,
@@ -67,5 +75,9 @@ func New() (*App, error) {
 		AttendanceRepo:    attendanceRepo,
 		AttendanceService: attendanceService,
 		AttendanceHandler: *attendanceHandler,
+
+		TableRepo:    tableRepo,
+		TableService: tableService,
+		TableHandler: *tableHandler,
 	}, nil
 }

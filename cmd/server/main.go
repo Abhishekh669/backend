@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 	"time"
@@ -58,19 +57,8 @@ func main() {
 		c.JSON(200, gin.H{"pong": "pong"})
 	})
 
-	newCache := algorithm.NewMenuCache()
-	foodCategories, err := app.FoodCategoryRepo.GetAllCategoriesFromDB(context.Background())
-	if err != nil {
-		log.Println("Error in getting food categories")
-
-	}
-
-	menuItems, err := app.FoodCategoryRepo.GetAllMenuItemsFromDB(context.Background())
-	if err != nil {
-		log.Println("error in getting menu times ")
-
-	}
-	newCache.ReloadFromDB(foodCategories, menuItems)
+	newCache := algorithm.NewMenuCache(app.FoodCategoryRepo)
+	newCache.ReloadFromDB()
 	router.GET("/get-menu-n-categories", func(c *gin.Context) {
 
 		categories, categoryChildren, menuItems :=

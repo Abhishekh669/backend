@@ -12,4 +12,5 @@ func SetUpRoutes(app *gin.Engine, appConfig *app.App, newCache *algorithm.MenuCa
 	RawMaterialServiceRouter(apiGroup, appConfig)
 	FoodCategoryServiceRouter(apiGroup, appConfig, newCache)
 	AttendanceServiceRouter(apiGroup, appConfig)
+	TableRouter(apiGroup, appConfig)
 }

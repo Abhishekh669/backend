@@ -12,6 +12,12 @@ const (
 	DeleteUsers    Permission = "delete:users"
 	AllPermissions Permission = "*"
 
+	//table
+	CreateTable Permission = "create:table"
+	DeleteTable Permission = "delete:table"
+	UpdateTable Permission = "update:table"
+	ViewTable   Permission = "view:table"
+
 	//raw-materials
 	CreateRawMaterials Permission = "create:raw_materials"
 	DeleteRawMaterials Permission = "delete:raw_materials"
@@ -76,11 +82,17 @@ var RolePermissions = map[models.Role][]Permission{
 		CreateFoodSubCategory,
 		UpdateFoodSubCategory,
 		DeleteFoodSubCategory,
+		ViewTable,
+		DeleteTable,
+		UpdateTable,
+		CreateTable,
 	},
 
 	models.RoleCashier: {
 		CancelLeaveRequest,
 		ViewAttendance,
+		ViewTable,
+		UpdateTable,
 
 		// ❌ no user management
 	},
@@ -93,6 +105,7 @@ var RolePermissions = map[models.Role][]Permission{
 		CreateFoodCategory,
 		DeleteFoodCategory,
 		ViewRawMaterials,
+		ViewTable,
 	},
 
 	models.RoleDeliveryStaff: {
@@ -103,9 +116,13 @@ var RolePermissions = map[models.Role][]Permission{
 	models.RoleWaiter: {
 		CancelLeaveRequest,
 		ViewAttendance,
+		ViewTable,
+		UpdateTable,
 	},
 
-	models.RoleCustomer: {},
+	models.RoleCustomer: {
+		ViewTable,
+	},
 }
 
 func HasPermission(role *models.Role, permission Permission) bool {

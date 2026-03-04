@@ -197,6 +197,28 @@ var postgressSchemaOrderedTables = []struct {
     );
     `,
 	},
+	{
+		Name: "table_status",
+		Schema: `
+    DO $$ BEGIN
+        CREATE TYPE table_state AS ENUM ('occupied', 'empty', 'booked');
+    EXCEPTION
+        WHEN duplicate_object THEN NULL;
+    END $$;
+
+    CREATE TABLE IF NOT EXISTS table_status (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        table_number INT NOT NULL,
+        status table_state NOT NULL DEFAULT 'empty',
+        capacity INT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_table_number UNIQUE (table_number)
+    );
+
+    -- Index for faster lookup by table_number
+    CREATE INDEX IF NOT EXISTS idx_table_number ON table_status(table_number);
+  `,
+	},
 }
 
 func CreatePostgresTables(ctx context.Context, postgresPool *pgxpool.Pool) error {
