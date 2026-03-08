@@ -29,6 +29,10 @@ type App struct {
 	TableRepo    repository.TableRepo
 	TableService services.TableService
 	TableHandler handlers.TableHandler
+
+	OrderRepo    repository.OrderRepo
+	OrderService services.OrderService
+	Orderhandler handlers.OrderHandler
 }
 
 func New() (*App, error) {
@@ -59,6 +63,10 @@ func New() (*App, error) {
 	tableService := services.NewTableService(tableRepo)
 	tableHandler := handlers.NewTableHandler(tableService)
 
+	orderRepo := repository.NewOrderRepository()
+	orderService := services.NewOrderService(orderRepo)
+	orderHandler := handlers.NewOrderHandler(orderService)
+
 	return &App{
 		UserRepo:    userRepo,
 		UserService: userService,
@@ -79,5 +87,9 @@ func New() (*App, error) {
 		TableRepo:    tableRepo,
 		TableService: tableService,
 		TableHandler: *tableHandler,
+
+		OrderRepo:    orderRepo,
+		OrderService: orderService,
+		Orderhandler: *orderHandler,
 	}, nil
 }

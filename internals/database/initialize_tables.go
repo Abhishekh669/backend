@@ -219,6 +219,85 @@ var postgressSchemaOrderedTables = []struct {
     CREATE INDEX IF NOT EXISTS idx_table_number ON table_status(table_number);
   `,
 	},
+	{
+		Name: "table_session",
+		Schema: `
+
+    -- Table to track active sessions per table
+    CREATE TABLE IF NOT EXISTS table_session (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      table_number INT NOT NULL,
+      open_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      close_time TIMESTAMPTZ,
+      status table_state DEFAULT 'empty',
+	  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- Indexes for performance
+    CREATE INDEX IF NOT EXISTS idx_table_session_table_number
+      ON table_session(table_number);
+   
+  `,
+	},
+	{
+		Name: "orders",
+		Schema: `
+
+    -- Create enum type for order status
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'order_status_enum') THEN
+        CREATE TYPE order_status_enum AS ENUM (
+          'not-approved',
+          'pending',
+          'progress',
+          'completed',
+          'cancelled'
+        );
+      END IF;
+    END$$;
+
+    -- Orders placed in a table session
+    CREATE TABLE IF NOT EXISTS orders (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      table_session_id UUID REFERENCES table_session(id) ON DELETE CASCADE,
+      customer_name VARCHAR(100),
+      customer_phone VARCHAR(20),
+	  waiter_id UUID REFERENCES users(id),
+	   note TEXT,
+      status order_status_enum DEFAULT 'not-approved',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- Indexes for performance
+    CREATE INDEX IF NOT EXISTS idx_orders_table_session_id
+      ON orders(table_session_id);
+
+
+  `,
+	},
+	{
+		Name: "order_items",
+		Schema: `
+
+    -- Items within an order
+    CREATE TABLE IF NOT EXISTS order_items (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+      menu_item_id UUID NOT NULL,
+      quantity NUMERIC(10,2) DEFAULT 1,
+      price NUMERIC(10,2) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- Indexes for performance
+    CREATE INDEX IF NOT EXISTS idx_order_items_order_id
+      ON order_items(order_id);
+    CREATE INDEX IF NOT EXISTS idx_order_items_menu_item_id
+      ON order_items(menu_item_id);
+  `,
+	},
 }
 
 func CreatePostgresTables(ctx context.Context, postgresPool *pgxpool.Pool) error {

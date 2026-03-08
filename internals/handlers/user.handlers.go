@@ -233,8 +233,8 @@ func (h *UserHandler) LoginUserHandler(c *gin.Context) {
 		return
 	}
 
-	token, err := h.userService.LoginUserService(loginData.Email, loginData.Password, c.Request.Context())
-	if err != nil {
+	token, user, err := h.userService.LoginUserService(loginData.Email, loginData.Password, c.Request.Context())
+	if err != nil || user == nil {
 		fmt.Println("Error in login service:", err)
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":   err.Error(),
@@ -255,6 +255,7 @@ func (h *UserHandler) LoginUserHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"token":   token,
 		"success": true,
+		"user":    ConvertUserTypeToSafeUserType(user),
 		"message": "login successfully",
 	})
 }

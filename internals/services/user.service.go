@@ -19,7 +19,7 @@ type UserService interface {
 	CreateNewUserService(c *gin.Context, user *models.CreateUserType) error
 	GetUsersListService(c *gin.Context, search string, limit, offset int, oldFirstBool bool) (*repository.UserListResponse, error)
 	GetUserByEmail(ctx context.Context, email string) (*models.UserType, error)
-	LoginUserService(email, password string, ctx context.Context) (string, error)
+	LoginUserService(email, password string, ctx context.Context) (string, *models.UserType, error)
 }
 
 type userService struct {
@@ -98,11 +98,11 @@ func (s *userService) GetUserByEmail(ctx context.Context, email string) (*models
 func (s *userService) LoginUserService(
 	email, password string,
 	ctx context.Context,
-) (string, error) {
+) (string, *models.UserType, error) {
 
 	user, err := s.repo.LoginUser(email, password, ctx)
 	if err != nil || user == nil {
-		return "", errors.New("incorrect credentials")
+		return "", nil, errors.New("incorrect credentials")
 	}
 
 	jwtData := lib.JwtDataType{
@@ -113,10 +113,10 @@ func (s *userService) LoginUserService(
 
 	jwtToken, err := lib.GenerateJWTToken(&jwtData)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate token")
+		return "", nil, fmt.Errorf("failed to generate token")
 	}
 
-	return jwtToken, nil
+	return jwtToken, user, nil
 }
 
 func NewUserService(repo repository.UserRepo) UserService {

@@ -18,6 +18,12 @@ const (
 	UpdateTable Permission = "update:table"
 	ViewTable   Permission = "view:table"
 
+	//orders
+	CreateOrder Permission = "create:order"
+	DeleteOrder Permission = "delete:order"
+	UpdateOrder Permission = "update:order"
+	ViewOrder   Permission = "view:order"
+
 	//raw-materials
 	CreateRawMaterials Permission = "create:raw_materials"
 	DeleteRawMaterials Permission = "delete:raw_materials"
@@ -86,6 +92,11 @@ var RolePermissions = map[models.Role][]Permission{
 		DeleteTable,
 		UpdateTable,
 		CreateTable,
+
+		CreateOrder,
+		UpdateOrder,
+		DeleteOrder,
+		ViewOrder,
 	},
 
 	models.RoleCashier: {
@@ -106,6 +117,8 @@ var RolePermissions = map[models.Role][]Permission{
 		DeleteFoodCategory,
 		ViewRawMaterials,
 		ViewTable,
+		UpdateOrder,
+		ViewOrder,
 	},
 
 	models.RoleDeliveryStaff: {
@@ -118,10 +131,16 @@ var RolePermissions = map[models.Role][]Permission{
 		ViewAttendance,
 		ViewTable,
 		UpdateTable,
+		CreateOrder,
+		UpdateOrder,
+		DeleteOrder,
+		ViewOrder,
 	},
 
 	models.RoleCustomer: {
 		ViewTable,
+		CreateOrder,
+		ViewOrder,
 	},
 }
 
