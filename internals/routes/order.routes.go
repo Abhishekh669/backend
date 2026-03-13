@@ -8,8 +8,9 @@ import (
 
 func OrderServiceRouter(router *gin.RouterGroup, app *app.App) {
 	orderServiceRoute := router.Group("/order-service")
+	orderServiceRoute.GET("/get-orders-status", middlewares.UserMiddleware(), app.Orderhandler.GetAllOrderStatusHandler)
 	orderServiceRoute.POST("/create-order", app.Orderhandler.CreateCustomerHandler)
-	orderServiceRoute.POST("/approve-order", middlewares.UserMiddleware())
+	orderServiceRoute.POST("/approve-order", middlewares.UserMiddleware(), app.Orderhandler.ApproveCustomerOrderHandler)
 	orderServiceRoute.GET("/get-order-requests", app.Orderhandler.GetAllOrderRequestHandler)
 	orderServiceRoute.GET("/get-request-by-table-num-n-phone", app.Orderhandler.GetOrderRequestByTableNumberNPhone)
 	orderServiceRoute.GET("/get-request-by-table-session-id/:table-session-id", middlewares.UserMiddleware(), app.Orderhandler.GetOrderRequestByTableSessionIdHandler)

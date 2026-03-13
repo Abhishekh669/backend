@@ -10,7 +10,7 @@ type OrderStatus string
 
 const (
 	OrderStatusNotApproved OrderStatus = "not-approved"
-	OrderStatusPending     OrderStatus = "pending"
+	OrderStatusApproved    OrderStatus = "approved"
 	OrderStatusProgress    OrderStatus = "progress"
 	OrderStatusCompleted   OrderStatus = "completed"
 	OrderStatusCancelled   OrderStatus = "cancelled"
@@ -38,12 +38,13 @@ type Order struct {
 }
 
 type OrderItem struct {
-	ID         uuid.UUID `db:"id" json:"id"`
-	OrderID    uuid.UUID `db:"order_id" json:"order_id"`
-	MenuItemID uuid.UUID `db:"menu_item_id" json:"menu_item_id"`
-	Quantity   float64   `db:"quantity" json:"quantity"`
-	Price      float64   `db:"price" json:"price"`
-	CreatedAt  time.Time `db:"created_at" json:"created_at"`
+	ID         uuid.UUID   `db:"id" json:"id"`
+	OrderID    uuid.UUID   `db:"order_id" json:"order_id"`
+	MenuItemID uuid.UUID   `db:"menu_item_id" json:"menu_item_id"`
+	Quantity   float64     `db:"quantity" json:"quantity"`
+	Price      float64     `db:"price" json:"price"`
+	Status     OrderStatus `db:"status" json:"status"`
+	CreatedAt  time.Time   `db:"created_at" json:"created_at"`
 }
 
 type CreateOrderMenuItems struct {
@@ -82,16 +83,20 @@ type ApproveOrderType struct {
 }
 
 type OrderItemType struct {
-	Id        uuid.UUID `json:"id"`
-	Price     float64   `json:"price"`
-	Quantity  float64   `json:"quantity"`
-	OrderId   uuid.UUID `json:"order_id"`
-	MenuId    uuid.UUID `json:"menu_id"`
-	MenuImage *string   `json:"menu_image"`
-	MenuName  string    `json:"menu_name"`
+	Id        uuid.UUID   `json:"id"`
+	Price     float64     `json:"price"`
+	Quantity  float64     `json:"quantity"`
+	OrderId   uuid.UUID   `json:"order_id"`
+	MenuId    uuid.UUID   `json:"menu_id"`
+	MenuImage *string     `json:"menu_image"`
+	Status    OrderStatus `json:"status"`
+	MenuName  string      `json:"menu_name"`
+	CreatedAt time.Time   `json:"created_at"`
 }
 
 type CustomerOrderRequest struct {
+	OrderId       uuid.UUID       `json:"id"`
+	Status        OrderStatus     `json:"status"`
 	Table         TableSession    `json:"table_session"`
 	CustomerName  *string         `json:"customer_name"`
 	CustomerPhone *string         `json:"customer_phone"`

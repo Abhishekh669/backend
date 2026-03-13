@@ -229,7 +229,7 @@ var postgressSchemaOrderedTables = []struct {
       table_number INT NOT NULL,
       open_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       close_time TIMESTAMPTZ,
-      status table_state DEFAULT 'empty',
+      status table_state NOT NULL DEFAULT 'empty',
 	  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -250,7 +250,7 @@ var postgressSchemaOrderedTables = []struct {
       IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'order_status_enum') THEN
         CREATE TYPE order_status_enum AS ENUM (
           'not-approved',
-          'pending',
+		  'approved',
           'progress',
           'completed',
           'cancelled'
@@ -286,6 +286,7 @@ var postgressSchemaOrderedTables = []struct {
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
       menu_item_id UUID NOT NULL,
+	  status order_status_enum DEFAULT 'not-approved',
       quantity NUMERIC(10,2) DEFAULT 1,
       price NUMERIC(10,2) NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

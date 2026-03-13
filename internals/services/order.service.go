@@ -12,6 +12,7 @@ import (
 )
 
 type OrderService interface {
+	GetAllOrderStatusService(c *gin.Context) ([]models.CustomerOrderRequest, error)
 	GetOrderReqeustFromTableNumberAndPhoneNumber(c *gin.Context, tableNumber int, phoneNumber string) (*models.CustomerOrderRequest, error)
 	GetOrderRequestFromTableSession(c *gin.Context, tableSessionId uuid.UUID) (*models.CustomerOrderRequest, error)
 	GetAllOrderRequests(c *gin.Context) ([]models.CustomerOrderRequest, error)
@@ -22,8 +23,16 @@ type orderService struct {
 	repo repository.OrderRepo
 }
 
+func (s *orderService) GetAllOrderStatusService(c *gin.Context) ([]models.CustomerOrderRequest, error) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewOrder)
+	if err != nil {
+		return nil, errors.New("user not authorized")
+	}
+	return s.repo.NewGetAllOrderForStatus(c.Request.Context())
+}
+
 func (s *orderService) GetOrderReqeustFromTableNumberAndPhoneNumber(c *gin.Context, tableNumber int, phoneNumber string) (*models.CustomerOrderRequest, error) {
-	return s.repo.GetTableSessionByTableAndPhone(c.Request.Context(), tableNumber, phoneNumber)
+	return s.repo.NewGetTableSessionByTableAndPhone(c.Request.Context(), tableNumber, phoneNumber)
 }
 
 func (s *orderService) GetOrderRequestFromTableSession(c *gin.Context, tableSessionId uuid.UUID) (*models.CustomerOrderRequest, error) {
@@ -32,11 +41,11 @@ func (s *orderService) GetOrderRequestFromTableSession(c *gin.Context, tableSess
 		return nil, errors.New("user not authorized")
 	}
 
-	return s.repo.GetTableSessionByID(c.Request.Context(), tableSessionId)
+	return s.repo.NewGetTableSessionByID(c.Request.Context(), tableSessionId)
 }
 
 func (s *orderService) GetAllOrderRequests(c *gin.Context) ([]models.CustomerOrderRequest, error) {
-	return s.repo.GetAllOrderRequest(c.Request.Context())
+	return s.repo.NewGetAllOrderRequest(c.Request.Context())
 }
 
 func (s *orderService) ApproveCustomerOrder(c *gin.Context, approveOrder *models.ApproveOrderType) error {
@@ -44,11 +53,11 @@ func (s *orderService) ApproveCustomerOrder(c *gin.Context, approveOrder *models
 	if err != nil {
 		return errors.New("user not authorized")
 	}
-	return s.repo.ApproveCustomerRequest(c.Request.Context(), approveOrder)
+	return s.repo.NewApproveCustomerRequest(c.Request.Context(), approveOrder)
 }
 
 func (s *orderService) CreateCustomerService(c *gin.Context, cusotmerOrder *models.CreateCustomerOrderRequest) error {
-	return s.repo.CreateCustomerOrder(c.Request.Context(), cusotmerOrder)
+	return s.repo.NewCreateCustomerOrder(c.Request.Context(), cusotmerOrder)
 }
 
 func NewOrderService(repo repository.OrderRepo) OrderService {

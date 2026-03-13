@@ -16,6 +16,18 @@ type OrderHandler struct {
 	orderService services.OrderService
 }
 
+func (h *OrderHandler) GetAllOrderStatusHandler(c *gin.Context) {
+	orderRequests, err := h.orderService.GetAllOrderStatusService(c)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success":        true,
+		"order_requests": orderRequests,
+	})
+}
+
 func (h *OrderHandler) GetOrderRequestByTableNumberNPhone(c *gin.Context) {
 	// Get query parameters
 	phoneNumber := c.Query("phone")
@@ -96,7 +108,6 @@ func (h *OrderHandler) GetOrderRequestByTableNumberNPhone(c *gin.Context) {
 	})
 }
 func (h *OrderHandler) GetOrderRequestByTableSessionIdHandler(c *gin.Context) {
-	fmt.Println("i am here hoi tw in order requests by table id ")
 
 	// Get the session ID from path parameter
 	sessionIdStr := c.Param("table-session-id")
@@ -120,12 +131,9 @@ func (h *OrderHandler) GetOrderRequestByTableSessionIdHandler(c *gin.Context) {
 		return
 	}
 
-	fmt.Println("this is me before calling it, sessionId:", sessionId)
-
 	// Pass the UUID directly (not a pointer)
 	orderRequestByTableId, err := h.orderService.GetOrderRequestFromTableSession(c, sessionId)
 
-	fmt.Println("this is err in get order request : ", err)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":   err.Error(),
@@ -139,10 +147,9 @@ func (h *OrderHandler) GetOrderRequestByTableSessionIdHandler(c *gin.Context) {
 		"order_request": orderRequestByTableId,
 	})
 }
+
 func (h *OrderHandler) GetAllOrderRequestHandler(c *gin.Context) {
-	fmt.Println("i am here hoi tw in order requests")
 	orderRequests, err := h.orderService.GetAllOrderRequests(c)
-	fmt.Println("this is errr in get order request : ", err)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
 		return
@@ -161,6 +168,7 @@ func (h *OrderHandler) ApproveCustomerOrderHandler(c *gin.Context) {
 	}
 
 	err := h.orderService.ApproveCustomerOrder(c, orderData)
+	fmt.Println("this isthe error in order approval : ", err)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
 		return
