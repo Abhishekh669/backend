@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 
 	"github.com/Abhishekh669/backend/internals/lib"
@@ -12,6 +13,12 @@ import (
 )
 
 type OrderService interface {
+	GetTableValidationByPhoneNTable(ctx context.Context, phone string, tableNumber int) (*models.TableValidation, error)
+	GetTableValidationById(ctx context.Context, id uuid.UUID) (*models.TableValidation, error)
+	CreateNewApprovalRequestService(c *gin.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error)
+	ApproveTableByWaiterService(c *gin.Context, req *models.WaiterApprovalRequest) error
+	DeleteTableValidationService(c *gin.Context, id uuid.UUID) error
+	GetUnassignedTablesService(c *gin.Context) ([]models.TableValidation, error)
 	GetAllOrderStatusService(c *gin.Context) ([]models.CustomerOrderRequest, error)
 	GetOrderReqeustFromTableNumberAndPhoneNumber(c *gin.Context, tableNumber int, phoneNumber string) (*models.CustomerOrderRequest, error)
 	GetOrderRequestFromTableSession(c *gin.Context, tableSessionId uuid.UUID) (*models.CustomerOrderRequest, error)
@@ -21,6 +28,53 @@ type OrderService interface {
 }
 type orderService struct {
 	repo repository.OrderRepo
+}
+
+func (s *orderService) GetTableValidationByPhoneNTable(ctx context.Context, phone string, tableNumber int) (*models.TableValidation, error) {
+	return s.repo.GetTableValidationByTableAndPhone(ctx, tableNumber, phone)
+}
+func (s *orderService) GetTableValidationById(ctx context.Context, id uuid.UUID) (*models.TableValidation, error) {
+	return s.repo.GetTableValidationByID(ctx, id)
+}
+
+// ── Create New Approval Request ──────────────────────────────
+func (s *orderService) CreateNewApprovalRequestService(c *gin.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error) {
+	_, err := lib.HasPermissionCheck(c, rbac.CreateOrder)
+	if err != nil {
+		return nil, errors.New("user not authorized")
+	}
+
+	return s.repo.CreateNewApprovalRequest(c.Request.Context(), req)
+}
+
+// ── Approve Table By Waiter ────────────────────────────────
+func (s *orderService) ApproveTableByWaiterService(c *gin.Context, req *models.WaiterApprovalRequest) error {
+	_, err := lib.HasPermissionCheck(c, rbac.CreateOrder)
+	if err != nil {
+		return errors.New("user not authorized")
+	}
+
+	return s.repo.ApproveTableByWaiter(c.Request.Context(), req)
+}
+
+// ── Delete Table Validation By ID ─────────────────────────
+func (s *orderService) DeleteTableValidationService(c *gin.Context, id uuid.UUID) error {
+	_, err := lib.HasPermissionCheck(c, rbac.DeleteOrder)
+	if err != nil {
+		return errors.New("user not authorized")
+	}
+
+	return s.repo.DeleteTableApprovalByID(c.Request.Context(), id)
+}
+
+// ── Get All Unassigned Tables ─────────────────────────────
+func (s *orderService) GetUnassignedTablesService(c *gin.Context) ([]models.TableValidation, error) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewOrder)
+	if err != nil {
+		return nil, errors.New("user not authorized")
+	}
+
+	return s.repo.GetUnassignedTables(c.Request.Context())
 }
 
 func (s *orderService) GetAllOrderStatusService(c *gin.Context) ([]models.CustomerOrderRequest, error) {

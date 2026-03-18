@@ -18,6 +18,12 @@ import (
 
 // OrderRepo interface defines all order-related operations
 type OrderRepo interface {
+	GetTableValidationByTableAndPhone(ctx context.Context, tableNumber int, phoneNumber string) (*models.TableValidation, error)
+	GetTableValidationByID(ctx context.Context, id uuid.UUID) (*models.TableValidation, error)
+	GetUnassignedTables(ctx context.Context) ([]models.TableValidation, error)
+	DeleteTableApprovalByID(ctx context.Context, id uuid.UUID) error
+	ApproveTableByWaiter(ctx context.Context, req *models.WaiterApprovalRequest) error
+	CreateNewApprovalRequest(ctx context.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error)
 	NewGetAllOrderForStatus(ctx context.Context) ([]models.CustomerOrderRequest, error)
 	NewGetAllOrderRequest(ctx context.Context) ([]models.CustomerOrderRequest, error)
 	NewGetTableSessionByTableAndPhone(ctx context.Context, tableNumber int, customerPhone string) (*models.CustomerOrderRequest, error)
@@ -35,6 +41,165 @@ type OrderRepo interface {
 // orderRepo implements OrderRepo interface
 type orderRepo struct {
 	pool *pgxpool.Pool
+}
+
+func (r *orderRepo) GetTableValidationByTableAndPhone(ctx context.Context, tableNumber int, phoneNumber string) (*models.TableValidation, error) {
+
+	var table models.TableValidation
+
+	query := `
+		SELECT id, table_number, phone_number, waiter_id, created_at, updated_at
+		FROM table_validation
+		WHERE table_number = $1 AND phone_number = $2
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+
+	err := r.pool.QueryRow(ctx, query, tableNumber, phoneNumber).Scan(
+		&table.ID,
+		&table.TableNumber,
+		&table.PhoneNumber,
+		&table.WaiterID,
+		&table.CreatedAt,
+		&table.UpdatedAt,
+	)
+
+	if err != nil {
+		return nil, errors.New("table validation not found")
+	}
+
+	return &table, nil
+}
+
+// GetTableValidationByID fetches a table_validation record by its ID
+func (r *orderRepo) GetTableValidationByID(ctx context.Context, id uuid.UUID) (*models.TableValidation, error) {
+	var table models.TableValidation
+
+	query := `
+		SELECT id, table_number, phone_number, waiter_id, created_at, updated_at
+		FROM table_validation
+		WHERE id = $1
+	`
+
+	err := r.pool.QueryRow(ctx, query, id).Scan(
+		&table.ID,
+		&table.TableNumber,
+		&table.PhoneNumber,
+		&table.WaiterID,
+		&table.CreatedAt,
+		&table.UpdatedAt,
+	)
+
+	if err != nil {
+		return nil, errors.New("table validation not found")
+	}
+
+	return &table, nil
+}
+
+func (r *orderRepo) GetUnassignedTables(ctx context.Context) ([]models.TableValidation, error) {
+	query := `
+		SELECT 
+			id,
+			table_number,
+			phone_number,
+			waiter_id,
+			created_at,
+			updated_at
+		FROM table_validation
+		WHERE waiter_id IS NULL
+		ORDER BY created_at ASC
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tables := []models.TableValidation{}
+
+	for rows.Next() {
+		var t models.TableValidation
+		err := rows.Scan(
+			&t.ID,
+			&t.TableNumber,
+			&t.PhoneNumber,
+			&t.WaiterID,
+			&t.CreatedAt,
+			&t.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		tables = append(tables, t)
+	}
+
+	return tables, nil
+}
+
+func (r *orderRepo) DeleteTableApprovalByID(ctx context.Context, id uuid.UUID) error {
+	query := `
+		DELETE FROM table_validation
+		WHERE id = $1
+		RETURNING id
+	`
+
+	var deletedID uuid.UUID
+	err := r.pool.QueryRow(ctx, query, id).Scan(&deletedID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// TODO : run a go routein for dleign the table sesiosn in which teh waiter is not assigned or create time ois mroe than 10 miutes
+// ApproveTableByWaiter assigns a waiter to a table validation request
+func (r *orderRepo) ApproveTableByWaiter(ctx context.Context, req *models.WaiterApprovalRequest) error {
+	query := `
+		UPDATE table_validation
+		SET 
+			waiter_id = $1,
+			table_number = $2,
+			phone_number = $3,
+			updated_at = NOW()
+		WHERE id = $4
+		RETURNING id
+	`
+
+	var id uuid.UUID
+	err := r.pool.QueryRow(ctx, query, req.WaiterId, req.TableNumber, req.Phone, req.Id).Scan(&id)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// CreateNewApprovalRequest inserts a new table validation record and returns the created row
+func (r *orderRepo) CreateNewApprovalRequest(ctx context.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error) {
+	query := `
+		INSERT INTO table_validation (table_number, phone_number)
+		VALUES ($1, $2)
+		RETURNING id, table_number, phone_number, waiter_id, created_at, updated_at
+	`
+
+	var tv models.TableValidation
+
+	err := r.pool.QueryRow(ctx, query, req.TableNumber, req.Phone).Scan(
+		&tv.ID,
+		&tv.TableNumber,
+		&tv.PhoneNumber,
+		&tv.WaiterID,
+		&tv.CreatedAt,
+		&tv.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tv, nil
 }
 
 func (r *orderRepo) NewGetAllOrderForStatus(ctx context.Context) ([]models.CustomerOrderRequest, error) {

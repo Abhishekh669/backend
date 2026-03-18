@@ -14,4 +14,12 @@ func OrderServiceRouter(router *gin.RouterGroup, app *app.App) {
 	orderServiceRoute.GET("/get-order-requests", app.Orderhandler.GetAllOrderRequestHandler)
 	orderServiceRoute.GET("/get-request-by-table-num-n-phone", app.Orderhandler.GetOrderRequestByTableNumberNPhone)
 	orderServiceRoute.GET("/get-request-by-table-session-id/:table-session-id", middlewares.UserMiddleware(), app.Orderhandler.GetOrderRequestByTableSessionIdHandler)
+
+	orderServiceRoute.POST("/table-approval", app.Orderhandler.CreateNewApprovalRequestHandler)
+	orderServiceRoute.POST("/table-approve-by-waiter", middlewares.UserMiddleware(), app.Orderhandler.ApproveTableByWaiterHandler)
+	orderServiceRoute.DELETE("/table-delete/:id", middlewares.UserMiddleware(), app.Orderhandler.DeleteTableValidationHandler)
+	orderServiceRoute.GET("/tables-unassigned", middlewares.UserMiddleware(), app.Orderhandler.GetUnassignedTablesHandler)
+	orderServiceRoute.GET("/get-table-validation-by-id/:id", app.Orderhandler.GetTableValidationByIDHandler)
+	orderServiceRoute.GET("/get-table-validation-by-phone-n-number", app.Orderhandler.GetTableValidationByPhoneAndTableHandler)
+
 }

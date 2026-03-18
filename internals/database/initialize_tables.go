@@ -85,28 +85,15 @@ var postgressSchemaOrderedTables = []struct {
 	{
 		Name: "categories",
 		Schema: `
-				--create categries table
 			CREATE TABLE IF NOT EXISTS categories (
     			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     			name VARCHAR(50) NOT NULL,
-    			slug VARCHAR(100) NOT NULL,
-    			parent_id UUID NULL,
-    			level INT NOT NULL DEFAULT 1,
+    			slug VARCHAR(100) NOT NULL UNIQUE,
     			is_active BOOLEAN DEFAULT TRUE,
-    			display_order INT DEFAULT 0,
     			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    			FOREIGN KEY (parent_id) REFERENCES categories(id) ON DELETE CASCADE,
-    			CONSTRAINT chk_max_level CHECK (level <= 5)
+    			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			
 			);
-
-			CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id);
-			CREATE UNIQUE INDEX IF NOT EXISTS uq_root_category_slug ON categories (slug) WHERE parent_id IS NULL;
-
-			-- Child categories (parent_id IS NOT NULL)
-			CREATE UNIQUE INDEX IF NOT EXISTS uq_child_category_slug ON categories (slug, parent_id) WHERE parent_id IS NOT NULL;
-
 
 		`,
 	},
@@ -240,6 +227,26 @@ var postgressSchemaOrderedTables = []struct {
    
   `,
 	},
+	{
+		Name: "table_validation",
+		Schema: `
+			CREATE TABLE IF NOT EXISTS table_validation (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    table_number INT NOT NULL,
+    phone_number TEXT NOT NULL,
+    waiter_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+ 
+    -- Composite unique constraint ensures uniqueness and automatically creates an index
+    CONSTRAINT uq_table_phone UNIQUE (table_number, phone_number)
+	);
+
+
+
+		`,
+	},
+
 	{
 		Name: "orders",
 		Schema: `

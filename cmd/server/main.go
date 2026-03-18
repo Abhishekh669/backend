@@ -59,16 +59,14 @@ func main() {
 
 	newCache := algorithm.NewMenuCache(app.FoodCategoryRepo)
 	newCache.ReloadFromDB()
+	//TODO: add middleware latter here
 	router.GET("/get-menu-n-categories", func(c *gin.Context) {
 
-		categories, categoryChildren, menuItems :=
-			newCache.GetFullMenuSnapshot()
+		groupedMenu := newCache.GetAll()
 
 		c.JSON(http.StatusOK, gin.H{
-			"success":           true,
-			"categories":        categories,
-			"category_children": categoryChildren,
-			"menu_items":        menuItems,
+			"success":      true,
+			"grouped_menu": groupedMenu,
 		})
 	})
 	routes.SetUpRoutes(router, app, newCache)

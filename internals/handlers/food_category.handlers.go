@@ -16,14 +16,18 @@ type FoodCategoryHandler struct {
 	foodCategoryService services.FoodCategoryService
 }
 
+type NewCreateFoodCategoryType struct {
+	CategoryName string `json:"category_name"`
+}
+
 type CreateFoodCategoryType struct {
 	CategoryName string   `json:"category_name"`
 	SlugPath     []string `json:"slug_path"`
 }
 
 type CreateMenuItemsType struct {
-	CategoryId *string                     `json:"category_id"`
-	MenuItems  []models.CreateMenuItemType `json:"menu_items"`
+	CategorySlug string                      `json:"category_slug"`
+	MenuItems    []models.CreateMenuItemType `json:"menu_items"`
 }
 
 type DeleteCategoriesPayload struct {
@@ -41,6 +45,24 @@ func StringToUUIDPtr(idStr string) (*uuid.UUID, error) {
 	}
 
 	return &parsedUUID, nil
+}
+
+func (h *FoodCategoryHandler) GetAllMenuItemsGroupedHander(c *gin.Context) {
+
+	res, err := h.foodCategoryService.GetAllMenuItemsGroupedService(c.Request.Context())
+
+	if err != nil {
+		log.Println("error in getting data by slug : ", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "got categories successfully",
+		"data":    res,
+		"success": true,
+	})
+
 }
 
 func (h *FoodCategoryHandler) UpdateMenuItemHandler(newCache *algorithm.MenuCache) gin.HandlerFunc {
@@ -69,14 +91,14 @@ func (h *FoodCategoryHandler) UpdateMenuItemHandler(newCache *algorithm.MenuCach
 }
 func (h *FoodCategoryHandler) UpdateCategoryHandler(newCache *algorithm.MenuCache) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var data models.UpdateCategoryType
+		var data models.NewUpdateCategoryType
 		if err := c.ShouldBindJSON(&data); err != nil {
 			fmt.Println("error in binding", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
 			return
 		}
 
-		err := h.foodCategoryService.UpdateCategoryService(c, &data)
+		err := h.foodCategoryService.NewUpdateCategoryService(c, &data)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
 			return
@@ -161,7 +183,7 @@ func (h *FoodCategoryHandler) CreateMenuItemsHandler(newCache *algorithm.MenuCac
 			return
 		}
 
-		if data.CategoryId == nil {
+		if data.CategorySlug == "" {
 			fmt.Println("not parent found")
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":   "invalid data",
@@ -170,19 +192,9 @@ func (h *FoodCategoryHandler) CreateMenuItemsHandler(newCache *algorithm.MenuCac
 			return
 		}
 
-		category_uuid, err := StringToUUIDPtr(*data.CategoryId)
-		if err != nil {
-			fmt.Println("error in parsing category id : ", err)
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "invalid category id",
-				"success": false,
-			})
-			return
-		}
-
 		fmt.Println("this is menu items : ", data)
 
-		err = h.foodCategoryService.CreateMenuItemsService(c, data.MenuItems, category_uuid)
+		err := h.foodCategoryService.CreateMenuItemsService(c, data.MenuItems, data.CategorySlug)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
 			return
@@ -197,14 +209,14 @@ func (h *FoodCategoryHandler) CreateMenuItemsHandler(newCache *algorithm.MenuCac
 	}
 }
 
-func (h *FoodCategoryHandler) GetFoodCategoriesBySlug(c *gin.Context) {
+func (h *FoodCategoryHandler) GetMenuItemsBySlug(c *gin.Context) {
 	rawSlug := c.Query("slug")
 	if rawSlug == "" {
 		log.Println("not enough slug")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid slug", "success": false})
 		return
 	}
-	res, err := h.foodCategoryService.GetFoodCategoriesBySlug(c, rawSlug)
+	res, err := h.foodCategoryService.NewGetAllMenuItemsService(c, rawSlug)
 
 	if err != nil {
 		log.Println("error in getting data by slug : ", err)
@@ -213,15 +225,15 @@ func (h *FoodCategoryHandler) GetFoodCategoriesBySlug(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "got categories successfully",
-		"data":    res,
-		"success": true,
+		"message":    "got categories successfully",
+		"menu_items": res,
+		"success":    true,
 	})
 
 }
 
 func (h *FoodCategoryHandler) GetFoodCategoriesHandlers(c *gin.Context) {
-	foodCategories, err := h.foodCategoryService.GetFoodCategories(c)
+	foodCategories, err := h.foodCategoryService.NewGetFoodCategories(c)
 
 	if err != nil {
 		fmt.Println("error in binding", err)
@@ -234,14 +246,14 @@ func (h *FoodCategoryHandler) GetFoodCategoriesHandlers(c *gin.Context) {
 }
 
 func (h *FoodCategoryHandler) CreateFoodCategoryHandler(c *gin.Context) {
-	var data CreateFoodCategoryType
+	var data NewCreateFoodCategoryType
 	if err := c.ShouldBindJSON(&data); err != nil {
 		fmt.Println("error in binding", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload", "success": false})
 		return
 	}
 
-	err := h.foodCategoryService.CreateCategoryService(c, data.CategoryName, data.SlugPath)
+	err := h.foodCategoryService.NewCreateCategoryService(c, data.CategoryName)
 	if err != nil {
 		fmt.Println("this is hte error in creating food cateogyr : ", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})

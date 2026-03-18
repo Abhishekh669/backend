@@ -6,6 +6,15 @@ import (
 	"github.com/gofrs/uuid"
 )
 
+type NewCategory struct {
+	ID        uuid.UUID `json:"id" db:"id"`
+	Name      string    `json:"name" db:"name"`
+	Slug      string    `json:"slug" db:"slug"`
+	IsActive  bool      `json:"is_active" db:"is_active"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
 type Category struct {
 	ID           uuid.UUID  `json:"id" db:"id"`
 	Name         string     `json:"name" db:"name"`
@@ -16,6 +25,21 @@ type Category struct {
 	DisplayOrder int        `json:"display_order" db:"display_order"`
 	CreatedAt    time.Time  `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+type MenuItemsResponse struct {
+	ID           uuid.UUID `json:"id" db:"id"`
+	CategoryName string    `json:"category_name"`
+	CategorySlug string    `json:"category_slug"`
+	Name         string    `json:"name" db:"name"`
+	Description  *string   `json:"description,omitempty" db:"description"`
+	Price        float64   `json:"price" db:"price"`
+	CategoryID   uuid.UUID `json:"category_id" db:"category_id"`
+	IsAvailable  bool      `json:"is_available" db:"is_available"`
+	ImageURL     *string   `json:"image_url,omitempty" db:"image_url"`
+	DisplayOrder int       `json:"display_order" db:"display_order"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type MenuItem struct {
@@ -31,6 +55,14 @@ type MenuItem struct {
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }
 
+type NewCreateMenuItemType struct {
+	Name        string  `json:"name" db:"name"`
+	Description *string `json:"description,omitempty" db:"description"`
+	Price       float64 `json:"price" db:"price"`
+	IsAvailable bool    `json:"is_available" db:"is_available"`
+	ImageURL    *string `json:"image_url,omitempty" db:"image_url"`
+}
+
 type CreateMenuItemType struct {
 	Name         string  `json:"name" db:"name"`
 	Description  *string `json:"description,omitempty" db:"description"`
@@ -38,6 +70,12 @@ type CreateMenuItemType struct {
 	IsAvailable  bool    `json:"is_available" db:"is_available"`
 	ImageURL     *string `json:"image_url,omitempty" db:"image_url"`
 	DisplayOrder int     `json:"display_order" db:"display_order"`
+}
+
+type NewUpdateCategoryType struct {
+	ID       string `json:"id" db:"id"`
+	Name     string `json:"name" db:"name"`
+	IsActive bool   `json:"is_active" db:"is_active"`
 }
 
 type UpdateCategoryType struct {

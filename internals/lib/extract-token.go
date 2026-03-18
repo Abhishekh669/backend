@@ -35,3 +35,20 @@ func ExtractTokenFromHeader(c *gin.Context) (string, error) {
 
 	return token, nil
 }
+
+func ExtractTokenFromCookie(c *gin.Context) (string, error) {
+	// "session_token" is the cookie name — replace with your actual name
+	token, err := c.Cookie("session_token")
+	if err != nil {
+		fmt.Println("token cookie not found")
+		return "", fmt.Errorf("invalid session")
+	}
+
+	token = strings.TrimSpace(token)
+	if token == "" {
+		fmt.Println("token cookie is empty")
+		return "", fmt.Errorf("invalid session")
+	}
+
+	return token, nil
+}

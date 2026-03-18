@@ -16,6 +16,136 @@ type OrderHandler struct {
 	orderService services.OrderService
 }
 
+func (h *OrderHandler) GetTableValidationByPhoneAndTableHandler(c *gin.Context) {
+	phone := c.Query("phone")
+	tableNumberStr := c.Query("table_number")
+
+	if phone == "" || tableNumberStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "phone and table_number are required",
+			"success": false,
+		})
+		return
+	}
+
+	tableNumber, err := strconv.Atoi(tableNumberStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "invalid table_number",
+			"success": false,
+		})
+		return
+	}
+
+	result, err := h.orderService.GetTableValidationByPhoneNTable(c, phone, tableNumber)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   err.Error(),
+			"success": false,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"table":   result,
+	})
+}
+
+func (h *OrderHandler) GetTableValidationByIDHandler(c *gin.Context) {
+	idParam := c.Param("id")
+
+	id, err := uuid.FromString(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "invalid UUID",
+			"success": false,
+		})
+		return
+	}
+
+	result, err := h.orderService.GetTableValidationById(c, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   err.Error(),
+			"success": false,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"table":   result,
+	})
+}
+
+// ── Create New Table Approval Request ─────────────────────
+func (h *OrderHandler) CreateNewApprovalRequestHandler(c *gin.Context) {
+	var req models.CustomerApprovalRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	tableValidation, err := h.orderService.CreateNewApprovalRequestService(c, &req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"table":   tableValidation,
+	})
+}
+
+// ── Approve Table By Waiter ──────────────────────────────
+func (h *OrderHandler) ApproveTableByWaiterHandler(c *gin.Context) {
+	var req models.WaiterApprovalRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	if err := h.orderService.ApproveTableByWaiterService(c, &req); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Table approved successfully"})
+}
+
+// ── Delete Table Validation by ID ────────────────────────
+func (h *OrderHandler) DeleteTableValidationHandler(c *gin.Context) {
+	idParam := c.Param("id")
+	tableID, err := uuid.FromString(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid table ID", "success": false})
+		return
+	}
+
+	if err := h.orderService.DeleteTableValidationService(c, tableID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Table validation deleted successfully"})
+}
+
+// ── Get All Unassigned Tables ───────────────────────────
+func (h *OrderHandler) GetUnassignedTablesHandler(c *gin.Context) {
+	tables, err := h.orderService.GetUnassignedTablesService(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"tables":  tables,
+	})
+}
+
 func (h *OrderHandler) GetAllOrderStatusHandler(c *gin.Context) {
 	orderRequests, err := h.orderService.GetAllOrderStatusService(c)
 	if err != nil {

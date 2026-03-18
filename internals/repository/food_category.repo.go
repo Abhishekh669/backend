@@ -23,14 +23,26 @@ type GetCategoriesBySlug struct {
 	MenuItems  []models.MenuItem `json:"menu_items"`
 }
 
+type CategoryMenuGroup struct {
+	CategoryName string                     `json:"category_name"`
+	CategorySlug string                     `json:"category_slug"`
+	MenuItems    []models.MenuItemsResponse `json:"menu_items"`
+}
+
 type FoodCategoryRepo interface {
+	GetAllMenuItemsGrouped(ctx context.Context) (map[string]CategoryMenuGroup, error)
+	NewUpdateCategory(ctx context.Context, category *models.NewUpdateCategoryType) error
+	NewGetAllTheMenuItemsFromSlug(ctx context.Context, slug string) ([]models.MenuItemsResponse, error)
+	NewGetFoodCategory(ctx context.Context) ([]models.NewCategory, error)
+	NewCreateCategory(ctx context.Context, name string) error
+
 	GetAllCategoriesFromDB(ctx context.Context) ([]models.CategoryCache, error)
 	GetAllMenuItemsFromDB(ctx context.Context) ([]models.MenuItemCache, error)
 	UpdateMenuItems(ctx context.Context, menu_item *models.UpdateMenuItemType) error
 	UpdateCategory(ctx context.Context, category *models.UpdateCategoryType) error
 	DeleteMenuItems(ctx context.Context, menuItemIds []string) error
 	DeleteCategories(ctx context.Context, categoryIds []string) error
-	CreateMenuItems(ctx context.Context, menuItems []models.CreateMenuItemType, categoryId *uuid.UUID) error
+	CreateMenuItems(ctx context.Context, menuItems []models.CreateMenuItemType, categorySlug string) error
 	GetFoodCategoriesFromSlug(ctx context.Context, slugs []string) (*GetCategoriesBySlug, error)
 	GetFoodCategory(ctx context.Context) ([]models.Category, error)
 	CreateCateogry(ctx context.Context, slugPath []string, name string) error
@@ -45,6 +57,76 @@ func slugify(s string) string {
 	re := regexp.MustCompile(`[^a-z0-9]+`)
 	s = re.ReplaceAllString(s, "-")
 	return strings.Trim(s, "-")
+}
+
+func (r *foodCategoryRepo) GetAllMenuItemsGrouped(ctx context.Context) (map[string]CategoryMenuGroup, error) {
+
+	query := `
+		SELECT
+			m.id,
+			c.name AS category_name,
+			c.slug AS category_slug,
+			m.name,
+			m.description,
+			m.price,
+			m.category_id,
+			m.is_available,
+			m.image_url,
+			m.display_order,
+			m.created_at,
+			m.updated_at
+		FROM menu_items m
+		JOIN categories c ON m.category_id = c.id
+		ORDER BY c.slug, m.display_order
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]CategoryMenuGroup)
+
+	for rows.Next() {
+
+		var item models.MenuItemsResponse
+
+		err := rows.Scan(
+			&item.ID,
+			&item.CategoryName,
+			&item.CategorySlug,
+			&item.Name,
+			&item.Description,
+			&item.Price,
+			&item.CategoryID,
+			&item.IsAvailable,
+			&item.ImageURL,
+			&item.DisplayOrder,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		)
+
+		if err != nil {
+			return nil, err
+		}
+
+		group, exists := result[item.CategorySlug]
+
+		if !exists {
+			group = CategoryMenuGroup{
+				CategoryName: item.CategoryName,
+				CategorySlug: item.CategorySlug,
+				MenuItems:    []models.MenuItemsResponse{},
+			}
+		}
+
+		group.MenuItems = append(group.MenuItems, item)
+
+		result[item.CategorySlug] = group
+	}
+
+	return result, nil
 }
 
 func (r *foodCategoryRepo) GetAllCategoriesFromDB(ctx context.Context) ([]models.CategoryCache, error) {
@@ -213,6 +295,48 @@ func (r *foodCategoryRepo) UpdateMenuItems(ctx context.Context, menu_item *model
 	return nil
 }
 
+func (r *foodCategoryRepo) NewUpdateCategory(ctx context.Context, category *models.NewUpdateCategoryType) error {
+	errorMessage := "failed to update category"
+
+	name := strings.TrimSpace(category.Name)
+	if name == "" {
+		return errors.New("category name cannot be empty")
+	}
+
+	slug := slugify(name)
+
+	query := `
+		UPDATE categories
+		SET
+			name = $1,
+			slug = $2,
+			updated_at = NOW()
+		WHERE id = $3
+	`
+
+	res, err := r.pool.Exec(ctx, query,
+		name,
+		slug,
+		category.ID,
+	)
+	if err != nil {
+		log.Printf("failed to update category: %v", err)
+
+		// handle duplicate slug error
+		if strings.Contains(err.Error(), "categories_slug_key") {
+			return errors.New("category with this name already exists")
+		}
+
+		return errors.New(errorMessage)
+	}
+
+	if res.RowsAffected() == 0 {
+		return errors.New("category not found")
+	}
+
+	return nil
+}
+
 func (r *foodCategoryRepo) UpdateCategory(ctx context.Context, category *models.UpdateCategoryType) error {
 	slug := slugify(category.Name)
 	errorMessage := "failed to update category"
@@ -320,15 +444,34 @@ func (r *foodCategoryRepo) DeleteCategories(ctx context.Context, categoryIds []s
 	log.Printf("Successfully deleted %d categories and all associated menu items permanently", len(categoryIds))
 	return nil
 }
-func (r *foodCategoryRepo) CreateMenuItems(ctx context.Context, menuItems []models.CreateMenuItemType, categoryId *uuid.UUID) error {
 
-	if len(menuItems) == 0 || categoryId == nil {
+func (r *foodCategoryRepo) CreateMenuItems(ctx context.Context, menuItems []models.CreateMenuItemType, categorySlug string) error {
+	if len(menuItems) == 0 {
 		return nil
 	}
 
 	fmt.Println("this is menu items : ", menuItems)
 
 	const failedMessage = "failed to create menu items"
+
+	// First, get the category ID from the slug
+	var categoryId string
+	getCategoryQuery := `
+		SELECT id 
+		FROM categories 
+		WHERE slug = $1 
+		LIMIT 1
+	`
+
+	err := r.pool.QueryRow(ctx, getCategoryQuery, categorySlug).Scan(&categoryId)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			log.Printf("category not found for slug: %s", categorySlug)
+			return errors.New("category not found")
+		}
+		log.Printf("error fetching category id: %v", err)
+		return errors.New(failedMessage)
+	}
 
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -355,7 +498,7 @@ func (r *foodCategoryRepo) CreateMenuItems(ctx context.Context, menuItems []mode
 			created_at,
 			updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7,	 NOW(), NOW())
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
 	`
 
 	for _, rm := range menuItems {
@@ -414,6 +557,77 @@ func (r *foodCategoryRepo) GetParentIDForSlug(ctx context.Context, slugs []strin
 	}
 
 	return parentID, nil
+}
+
+func (r *foodCategoryRepo) NewGetAllTheMenuItemsFromSlug(ctx context.Context, slug string) ([]models.MenuItemsResponse, error) {
+
+	// 1️⃣ Check if category exists
+	var exists bool
+	checkQuery := `SELECT EXISTS(SELECT 1 FROM categories WHERE slug = $1)`
+
+	err := r.pool.QueryRow(ctx, checkQuery, slug).Scan(&exists)
+	if err != nil {
+		return nil, err
+	}
+
+	if !exists {
+		return nil, fmt.Errorf("category with slug '%s' not found", slug)
+	}
+
+	// 2️⃣ Fetch menu items
+	query := `
+		SELECT
+			m.id,
+			c.name AS category_name,
+			c.slug AS category_slug,
+			m.name,
+			m.description,
+			m.price,
+			m.category_id,
+			m.is_available,
+			m.image_url,
+			m.display_order,
+			m.created_at,
+			m.updated_at
+		FROM menu_items m
+		JOIN categories c ON m.category_id = c.id
+		WHERE c.slug = $1
+		ORDER BY m.display_order ASC
+	`
+
+	rows, err := r.pool.Query(ctx, query, slug)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := []models.MenuItemsResponse{}
+
+	for rows.Next() {
+		var item models.MenuItemsResponse
+
+		err := rows.Scan(
+			&item.ID,
+			&item.CategoryName,
+			&item.CategorySlug,
+			&item.Name,
+			&item.Description,
+			&item.Price,
+			&item.CategoryID,
+			&item.IsAvailable,
+			&item.ImageURL,
+			&item.DisplayOrder,
+			&item.CreatedAt,
+			&item.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		items = append(items, item)
+	}
+
+	return items, nil
 }
 
 func (r *foodCategoryRepo) GetFoodCategoriesFromSlug(
@@ -555,6 +769,52 @@ func (r *foodCategoryRepo) GetFoodCategoriesFromSlug(
 	}, nil
 }
 
+func (r *foodCategoryRepo) NewGetFoodCategory(ctx context.Context) ([]models.NewCategory, error) {
+	query := `
+		SELECT
+			id,
+			name,
+			slug,
+			is_active,
+			created_at,
+			updated_at
+		FROM categories
+		ORDER BY created_at ASC
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	categories := make([]models.NewCategory, 0)
+
+	for rows.Next() {
+		var c models.NewCategory
+
+		err := rows.Scan(
+			&c.ID,
+			&c.Name,
+			&c.Slug,
+			&c.IsActive,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		categories = append(categories, c)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return categories, nil
+}
+
 func (r *foodCategoryRepo) GetFoodCategory(ctx context.Context) ([]models.Category, error) {
 	query := `
 		SELECT
@@ -588,7 +848,7 @@ func (r *foodCategoryRepo) GetFoodCategory(ctx context.Context) ([]models.Catego
 			&c.ID,
 			&c.Name,
 			&c.Slug,
-			&c.ParentID, // *uuid.UUID handles NULL
+			&c.ParentID,
 			&c.Level,
 			&c.IsActive,
 			&c.DisplayOrder,
@@ -609,78 +869,20 @@ func (r *foodCategoryRepo) GetFoodCategory(ctx context.Context) ([]models.Catego
 	return categories, nil
 }
 
-// func (r *foodCategoryRepo) CreateCategory(
-// 	ctx context.Context,
-// 	name string,
-// 	parentID *uuid.UUID, // nil for root category
-// ) error {
+func (r *foodCategoryRepo) NewCreateCategory(ctx context.Context, name string) error {
+	slug := slugify(name)
 
-// 	slug := slugify(name)
+	query := `
+		INSERT INTO categories (name, slug)
+		VALUES ($1, $2)
+	`
+	_, err := r.pool.Exec(ctx, query, name, slug)
+	if err != nil {
+		return err
+	}
 
-// 	fmt.Println("this is hte new slug : ", slug)
-
-// 	level := 1
-// 	if parentID != nil {
-// 		// fetch parent level
-// 		err := r.pool.QueryRow(
-// 			ctx,
-// 			`SELECT level FROM categories WHERE id = $1`,
-// 			parentID,
-// 		).Scan(&level)
-
-// 		if err != nil {
-
-// 			log.Println("error in creating category : ", err)
-// 			return fmt.Errorf("failed to fetch parent category: %w", err)
-// 		}
-
-// 		level = level + 1
-// 	}
-
-// 	_, err := r.pool.Exec(
-// 		ctx,
-// 		`
-// 		INSERT INTO categories (
-// 			name,
-// 			slug,
-// 			parent_id,
-// 			level
-// 		)
-// 		VALUES ($1, $2, $3, $4)
-// 		`,
-// 		name,
-// 		slug,
-// 		parentID,
-// 		level,
-// 	)
-
-// 	if err != nil {
-// 		log.Println("error in creating category : ", err)
-
-// 		var pgErr *pgconn.PgError
-// 		if errors.As(err, &pgErr) {
-
-// 			// 23505 = unique_violation
-// 			if pgErr.Code == "23505" {
-
-// 				switch pgErr.ConstraintName {
-// 				case "uq_root_category_slug":
-// 					return fmt.Errorf(" category with this name already exists")
-
-// 				case "categories_slug_key":
-// 					return fmt.Errorf("a category with this slug already exists")
-
-// 				default:
-// 					return fmt.Errorf("category is already created")
-// 				}
-// 			}
-// 		}
-
-// 		return fmt.Errorf("failed to create category: %w", err)
-// 	}
-
-// 	return nil
-// }
+	return nil
+}
 
 func (r *foodCategoryRepo) CreateCateogry(ctx context.Context, slugPath []string, name string) error {
 	if len(slugPath) > 5 {
