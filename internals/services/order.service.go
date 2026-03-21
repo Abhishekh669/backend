@@ -14,6 +14,7 @@ import (
 )
 
 type OrderService interface {
+	DeleteTableSessionByIdService(c *gin.Context, id uuid.UUID) error
 	GetTableValidationByPhoneNTable(ctx context.Context, phone string, tableNumber int) (string, ReqStatus, error)
 	GetTableValidationById(ctx context.Context, id uuid.UUID) (*models.TableValidation, error)
 	CreateNewApprovalRequestService(c *gin.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error)
@@ -38,6 +39,15 @@ const (
 	OrderNotApproved ReqStatus = "not_approved"
 	OrderApproved    ReqStatus = "approved"
 )
+
+func (s *orderService) DeleteTableSessionByIdService(c *gin.Context, id uuid.UUID) error {
+	_, err := lib.HasPermissionCheck(c, rbac.DeleteOrder)
+	if err != nil {
+		return errors.New("user not authorized")
+	}
+
+	return s.repo.DeleteTablesSessionById(c.Request.Context(), &id)
+}
 
 func (s *orderService) GetTableValidationByPhoneNTable(ctx context.Context, phone string, tableNumber int) (string, ReqStatus, error) {
 	table, err := s.repo.GetTableValidationByTableAndPhone(ctx, tableNumber, phone)

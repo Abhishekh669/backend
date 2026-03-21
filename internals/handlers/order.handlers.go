@@ -16,6 +16,39 @@ type OrderHandler struct {
 	orderService services.OrderService
 }
 
+func (h *OrderHandler) DeleteTableSessionByIdHandler(c *gin.Context) {
+	idParam := c.Param("id")
+	tableID, err := uuid.FromString(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid table ID", "success": false})
+		return
+	}
+
+	if err := h.orderService.DeleteTableSessionByIdService(c, tableID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Table service deleted successfully"})
+}
+
+func (h *OrderHandler) GetTableValidationFromTokenHandler(c *gin.Context) {
+	tableData, exists := c.Get("table_data")
+
+	if !exists {
+		c.JSON(500, gin.H{
+			"success": false,
+			"error":   "table data not found in context",
+		})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"success":          true,
+		"table_validation": tableData,
+	})
+}
+
 func (h *OrderHandler) GetTableValidationByPhoneAndTableHandler(c *gin.Context) {
 	phone := c.Query("phone")
 	tableNumberStr := c.Query("table_number")
@@ -236,6 +269,8 @@ func (h *OrderHandler) GetOrderRequestByTableNumberNPhone(c *gin.Context) {
 	// Call service to get order request
 	orderRequestByPhone, err := h.orderService.GetOrderReqeustFromTableNumberAndPhoneNumber(c, tableNumber, phoneNumber)
 
+	fmt.Println("this is order request by phone  and table  : ", orderRequestByPhone)
+
 	if err != nil {
 		// Handle different error cases
 		if strings.Contains(err.Error(), "no active session found") {
@@ -351,6 +386,7 @@ func (h *OrderHandler) CreateCustomerHandler(c *gin.Context) {
 	}
 
 	err := h.orderService.CreateCustomerService(c, orderData)
+	fmt.Println("this is order service  err : ", err)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
 		return

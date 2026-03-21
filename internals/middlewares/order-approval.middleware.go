@@ -14,10 +14,11 @@ import (
 func CustomerMiddleware(app *app.App) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString, err := lib.ExtractTokenFromCookie(c)
+
 		if err != nil || tokenString == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"success": false,
-				"error":   "missing or invalid authorization header",
+				"error":   "missing or invalid authorization",
 			})
 			c.Abort()
 			return
@@ -35,27 +36,39 @@ func CustomerMiddleware(app *app.App) gin.HandlerFunc {
 
 		validationUUID, err := uuid.FromString(claims.Id)
 		if err != nil {
-
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid table ID", "success": false})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error":   "Invalid table ID",
+			})
 			c.Abort()
 			return
 		}
 
 		table_data, err := app.OrderRepo.GetTableValidationByID(context.Background(), validationUUID)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid table ID", "success": false})
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"error":   "Invalid table ID",
+			})
 			c.Abort()
 			return
 		}
 
+		// expiry
 		if time.Since(table_data.CreatedAt) > 23*time.Hour {
 			app.OrderRepo.DeleteTableApprovalByID(context.Background(), table_data.ID)
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"error":   "session expired",
+			})
+			c.Abort()
+			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"success": true, "table_validation": table_data})
+		// ✅ attach data to context
+		c.Set("table_data", table_data)
 
-		c.Set("table_id", table_data.ID)
-		c.Set("phone_number", table_data.PhoneNumber)
-		c.Set("table_number", table_data.TableNumber)
+		// ✅ continue normally
+		c.Next()
 	}
 }

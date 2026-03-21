@@ -18,6 +18,7 @@ import (
 
 // OrderRepo interface defines all order-related operations
 type OrderRepo interface {
+	DeleteTablesSessionById(ctx context.Context, tableSessionId *uuid.UUID) error
 	GetTableValidationByTableAndPhone(ctx context.Context, tableNumber int, phoneNumber string) (*models.TableValidation, error)
 	GetTableValidationByID(ctx context.Context, id uuid.UUID) (*models.TableValidation, error)
 	GetUnassignedTables(ctx context.Context) ([]models.TableValidation, error)
@@ -41,6 +42,23 @@ type OrderRepo interface {
 // orderRepo implements OrderRepo interface
 type orderRepo struct {
 	pool *pgxpool.Pool
+}
+
+func (r *orderRepo) DeleteTablesSessionById(ctx context.Context, tableSessionId *uuid.UUID) error {
+
+	query := `
+		DELETE FROM table_session
+		WHERE id = $1
+		RETURNING id
+	`
+
+	var deletedID uuid.UUID
+	err := r.pool.QueryRow(ctx, query, tableSessionId).Scan(&deletedID)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *orderRepo) GetTableValidationByTableAndPhone(ctx context.Context, tableNumber int, phoneNumber string) (*models.TableValidation, error) {
@@ -181,16 +199,80 @@ func (r *orderRepo) ApproveTableByWaiter(ctx context.Context, req *models.Waiter
 
 // CreateNewApprovalRequest inserts a new table validation record and returns the created row
 func (r *orderRepo) CreateNewApprovalRequest(ctx context.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error) {
-	fmt.Println("this is reques t  in repo: ", req)
-	query := `
+	fmt.Println("this is request in repo: ", req)
+
+	// Start a transaction
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	// Step 1: Check if an active table session already exists for this table number
+	tableSession := &models.TableSession{}
+	checkSessionQuery := `
+		SELECT id, table_number, open_time, close_time, status, created_at, updated_at
+		FROM table_session
+		WHERE open_time IS NOT NULL
+		AND close_time IS NULL
+		AND table_number = $1
+	`
+	err = tx.QueryRow(ctx, checkSessionQuery, req.TableNumber).Scan(
+		&tableSession.ID,
+		&tableSession.TableNumber,
+		&tableSession.OpenTime,
+		&tableSession.CloseTime,
+		&tableSession.Status,
+		&tableSession.CreatedAt,
+		&tableSession.UpdatedAt,
+	)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+
+	// If a session exists, table is already booked
+	if err == nil {
+		return nil, errors.New("table is already booked")
+	}
+
+	// Step 2: No active session found — create a new table session
+	createSessionQuery := `
+		INSERT INTO table_session (table_number, open_time, status)
+		VALUES ($1, NOW(), 'occupied')
+		RETURNING id, table_number, open_time, close_time, status, created_at, updated_at
+	`
+	err = tx.QueryRow(ctx, createSessionQuery, req.TableNumber).Scan(
+		&tableSession.ID,
+		&tableSession.TableNumber,
+		&tableSession.OpenTime,
+		&tableSession.CloseTime,
+		&tableSession.Status,
+		&tableSession.CreatedAt,
+		&tableSession.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 3: Update table_status to 'occupied'
+	updateTableStatusQuery := `
+		UPDATE table_status
+		SET status = $1
+		WHERE table_number = $2
+	`
+	_, err = tx.Exec(ctx, updateTableStatusQuery, models.TableOccupied, req.TableNumber)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 4: Create the approval request in table_validation
+	insertValidationQuery := `
 		INSERT INTO table_validation (table_number, phone_number)
 		VALUES ($1, $2)
 		RETURNING id, table_number, phone_number, waiter_id, created_at, updated_at
 	`
-
 	var tv models.TableValidation
-
-	err := r.pool.QueryRow(ctx, query, req.TableNumber, req.Phone).Scan(
+	err = tx.QueryRow(ctx, insertValidationQuery, req.TableNumber, req.Phone).Scan(
 		&tv.ID,
 		&tv.TableNumber,
 		&tv.PhoneNumber,
@@ -199,6 +281,11 @@ func (r *orderRepo) CreateNewApprovalRequest(ctx context.Context, req *models.Cu
 		&tv.UpdatedAt,
 	)
 	if err != nil {
+		return nil, err
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 
@@ -2002,15 +2089,14 @@ func (r *orderRepo) NewCreateCustomerOrder(ctx context.Context, customerOrder *m
 	if err != nil {
 		return fmt.Errorf("failed to start transaction: %w", err)
 	}
-
 	defer func() {
 		if err != nil {
 			tx.Rollback(ctx)
 		}
 	}()
 
+	// Fetch existing active table session (must exist — created during approval)
 	tableSession := &models.TableSession{}
-
 	query := `
 		SELECT id, table_number, open_time, close_time, status, created_at, updated_at
 		FROM table_session
@@ -2018,7 +2104,6 @@ func (r *orderRepo) NewCreateCustomerOrder(ctx context.Context, customerOrder *m
 		AND close_time IS NULL
 		AND table_number = $1
 	`
-
 	err = tx.QueryRow(ctx, query, customerOrder.TableNumber).Scan(
 		&tableSession.ID,
 		&tableSession.TableNumber,
@@ -2028,47 +2113,11 @@ func (r *orderRepo) NewCreateCustomerOrder(ctx context.Context, customerOrder *m
 		&tableSession.CreatedAt,
 		&tableSession.UpdatedAt,
 	)
-
-	// Create session if not exists
-	if err == pgx.ErrNoRows {
-
-		createQuery := `
-			INSERT INTO table_session (table_number, open_time, status)
-			VALUES ($1, NOW(), 'occupied')
-			RETURNING id, table_number, open_time, close_time, status, created_at, updated_at
-		`
-
-		err = tx.QueryRow(ctx, createQuery, customerOrder.TableNumber).Scan(
-			&tableSession.ID,
-			&tableSession.TableNumber,
-			&tableSession.OpenTime,
-			&tableSession.CloseTime,
-			&tableSession.Status,
-			&tableSession.CreatedAt,
-			&tableSession.UpdatedAt,
-		)
-
-		if err != nil {
-			return fmt.Errorf("failed to create table session: %w", err)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("no active session found for table %d", customerOrder.TableNumber)
 		}
-
-		updateTableStatusQuery := `
-			UPDATE table_status
-			SET status = $1
-			WHERE table_number = $2
-		`
-
-		_, err = tx.Exec(ctx, updateTableStatusQuery,
-			models.TableOccupied,
-			customerOrder.TableNumber,
-		)
-
-		if err != nil {
-			return fmt.Errorf("failed to update table status: %w", err)
-		}
-
-	} else if err != nil {
-		return fmt.Errorf("db failure fetching table session: %w", err)
+		return fmt.Errorf("failed to fetch table session: %w", err)
 	}
 
 	// Check existing order
