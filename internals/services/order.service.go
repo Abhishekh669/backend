@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Abhishekh669/backend/internals/lib"
 	"github.com/Abhishekh669/backend/internals/models"
@@ -13,10 +14,10 @@ import (
 )
 
 type OrderService interface {
-	GetTableValidationByPhoneNTable(ctx context.Context, phone string, tableNumber int) (*models.TableValidation, error)
+	GetTableValidationByPhoneNTable(ctx context.Context, phone string, tableNumber int) (string, ReqStatus, error)
 	GetTableValidationById(ctx context.Context, id uuid.UUID) (*models.TableValidation, error)
 	CreateNewApprovalRequestService(c *gin.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error)
-	ApproveTableByWaiterService(c *gin.Context, req *models.WaiterApprovalRequest) error
+	ApproveTableByWaiterService(c *gin.Context, req *models.WaiterApprovalRequest) (string, error)
 	DeleteTableValidationService(c *gin.Context, id uuid.UUID) error
 	GetUnassignedTablesService(c *gin.Context) ([]models.TableValidation, error)
 	GetAllOrderStatusService(c *gin.Context) ([]models.CustomerOrderRequest, error)
@@ -30,31 +31,81 @@ type orderService struct {
 	repo repository.OrderRepo
 }
 
-func (s *orderService) GetTableValidationByPhoneNTable(ctx context.Context, phone string, tableNumber int) (*models.TableValidation, error) {
-	return s.repo.GetTableValidationByTableAndPhone(ctx, tableNumber, phone)
+type ReqStatus string
+
+const (
+	OrderNotFound    ReqStatus = "not_found"
+	OrderNotApproved ReqStatus = "not_approved"
+	OrderApproved    ReqStatus = "approved"
+)
+
+func (s *orderService) GetTableValidationByPhoneNTable(ctx context.Context, phone string, tableNumber int) (string, ReqStatus, error) {
+	table, err := s.repo.GetTableValidationByTableAndPhone(ctx, tableNumber, phone)
+	fmt.Println("this is table in valget : ", table)
+	if err != nil {
+		return "", OrderNotFound, err
+	}
+
+	if table.WaiterID == nil {
+		return "", OrderNotApproved, nil
+	}
+
+	sessionJwtData := lib.OrderApprovalDataType{
+		Id:          table.ID.String(),
+		PhoneNumber: table.PhoneNumber,
+		TableNumber: tableNumber,
+	}
+
+	sessionToken, err := lib.GenerateOrderApprovalToken(&sessionJwtData)
+	if err != nil {
+		return "", OrderNotApproved, err
+	}
+
+	return sessionToken, OrderApproved, nil
+
 }
+
 func (s *orderService) GetTableValidationById(ctx context.Context, id uuid.UUID) (*models.TableValidation, error) {
 	return s.repo.GetTableValidationByID(ctx, id)
 }
 
 // ── Create New Approval Request ──────────────────────────────
 func (s *orderService) CreateNewApprovalRequestService(c *gin.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error) {
-	_, err := lib.HasPermissionCheck(c, rbac.CreateOrder)
-	if err != nil {
-		return nil, errors.New("user not authorized")
-	}
-
 	return s.repo.CreateNewApprovalRequest(c.Request.Context(), req)
 }
 
 // ── Approve Table By Waiter ────────────────────────────────
-func (s *orderService) ApproveTableByWaiterService(c *gin.Context, req *models.WaiterApprovalRequest) error {
+func (s *orderService) ApproveTableByWaiterService(c *gin.Context, req *models.WaiterApprovalRequest) (string, error) {
 	_, err := lib.HasPermissionCheck(c, rbac.CreateOrder)
 	if err != nil {
-		return errors.New("user not authorized")
+		return "", errors.New("user not authorized")
 	}
 
-	return s.repo.ApproveTableByWaiter(c.Request.Context(), req)
+	err = s.repo.ApproveTableByWaiter(c.Request.Context(), req)
+
+	if err != nil {
+		return "", errors.New("failed to approve table")
+	}
+
+	table, err := s.repo.GetTableValidationByTableAndPhone(c.Request.Context(), req.TableNumber, req.Phone)
+	if err != nil {
+		return "", err
+	}
+
+	if table.WaiterID == nil {
+		return "", errors.New("Request is not approved")
+	}
+	sessionJwtData := lib.OrderApprovalDataType{
+		Id:          table.ID.String(),
+		PhoneNumber: table.PhoneNumber,
+		TableNumber: table.TableNumber,
+	}
+
+	sessionToken, err := lib.GenerateOrderApprovalToken(&sessionJwtData)
+	if err != nil {
+		return "", err
+	}
+	return sessionToken, nil
 }
 
 // ── Delete Table Validation By ID ─────────────────────────

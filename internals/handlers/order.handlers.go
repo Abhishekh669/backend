@@ -37,19 +37,45 @@ func (h *OrderHandler) GetTableValidationByPhoneAndTableHandler(c *gin.Context) 
 		return
 	}
 
-	result, err := h.orderService.GetTableValidationByPhoneNTable(c, phone, tableNumber)
+	token, reqStatus, err := h.orderService.GetTableValidationByPhoneNTable(c, phone, tableNumber)
+	fmt.Println("thisi shte error : ", err)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   err.Error(),
+			"error":   "failed to get status",
 			"success": false,
 		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"table":   result,
-	})
+	switch reqStatus {
+
+	case services.OrderNotFound:
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"status":  services.OrderNotFound,
+			"message": "No request found",
+		})
+
+	case services.OrderNotApproved:
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"status":  services.OrderNotApproved,
+			"message": "Request is pending approval",
+		})
+
+	case services.OrderApproved:
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"status":  services.OrderApproved,
+			"token":   token,
+		})
+
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "unknown status",
+			"success": false,
+		})
+	}
 }
 
 func (h *OrderHandler) GetTableValidationByIDHandler(c *gin.Context) {
@@ -87,6 +113,13 @@ func (h *OrderHandler) CreateNewApprovalRequestHandler(c *gin.Context) {
 		return
 	}
 
+	if len(req.Phone) < 9 && len(req.Phone) > 10 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid phone number", "success": false})
+		return
+	}
+
+	fmt.Println("this is new order approv req : ", req)
+
 	tableValidation, err := h.orderService.CreateNewApprovalRequestService(c, &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "success": false})
@@ -107,12 +140,13 @@ func (h *OrderHandler) ApproveTableByWaiterHandler(c *gin.Context) {
 		return
 	}
 
-	if err := h.orderService.ApproveTableByWaiterService(c, &req); err != nil {
+	token, err := h.orderService.ApproveTableByWaiterService(c, &req)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "success": false})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Table approved successfully"})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Table approved successfully", "token": token})
 }
 
 // ── Delete Table Validation by ID ────────────────────────

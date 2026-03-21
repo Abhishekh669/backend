@@ -64,6 +64,8 @@ func (r *orderRepo) GetTableValidationByTableAndPhone(ctx context.Context, table
 		&table.UpdatedAt,
 	)
 
+	fmt.Println("error in getting value table -val  : ", err)
+
 	if err != nil {
 		return nil, errors.New("table validation not found")
 	}
@@ -179,6 +181,7 @@ func (r *orderRepo) ApproveTableByWaiter(ctx context.Context, req *models.Waiter
 
 // CreateNewApprovalRequest inserts a new table validation record and returns the created row
 func (r *orderRepo) CreateNewApprovalRequest(ctx context.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error) {
+	fmt.Println("this is reques t  in repo: ", req)
 	query := `
 		INSERT INTO table_validation (table_number, phone_number)
 		VALUES ($1, $2)

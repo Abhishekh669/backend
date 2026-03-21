@@ -52,5 +52,10 @@ func CustomerMiddleware(app *app.App) gin.HandlerFunc {
 			app.OrderRepo.DeleteTableApprovalByID(context.Background(), table_data.ID)
 		}
 
+		c.JSON(http.StatusOK, gin.H{"success": true, "table_validation": table_data})
+
+		c.Set("table_id", table_data.ID)
+		c.Set("phone_number", table_data.PhoneNumber)
+		c.Set("table_number", table_data.TableNumber)
 	}
 }
