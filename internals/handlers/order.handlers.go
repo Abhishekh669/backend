@@ -24,7 +24,23 @@ func (h *OrderHandler) DeleteTableSessionByIdHandler(c *gin.Context) {
 		return
 	}
 
-	if err := h.orderService.DeleteTableSessionByIdService(c, tableID); err != nil {
+	phoneNumber := c.Query("phoneNumber")
+	if len(phoneNumber) < 9 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid phone number", "success": false})
+		return
+	}
+
+	tableNumberString := c.Query("tableNumber")
+	tableNumber, err := strconv.Atoi(tableNumberString)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "invalid table_number",
+			"success": false,
+		})
+		return
+	}
+
+	if err := h.orderService.DeleteTableSessionByIdService(c, &tableID, tableNumber, phoneNumber); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "success": false})
 		return
 	}

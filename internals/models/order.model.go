@@ -124,3 +124,9 @@ type TableValidation struct {
 	CreatedAt   time.Time  `db:"created_at" json:"created_at"`     // TIMESTAMPTZ NOT NULL
 	UpdatedAt   time.Time  `db:"updated_at" json:"updated_at"`     // TIMESTAMPTZ NOT NULL
 }
+
+type UpdateOrderItem struct {
+	Status      OrderStatus `json:"status"`
+	OrderItemId string      `json:"order_item_id"`
+	OrderId     string      `json:"order_id"`
+}

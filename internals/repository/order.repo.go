@@ -18,7 +18,8 @@ import (
 
 // OrderRepo interface defines all order-related operations
 type OrderRepo interface {
-	DeleteTablesSessionById(ctx context.Context, tableSessionId *uuid.UUID) error
+	UpdateOrderItemStatus(ctx context.Context, status *models.OrderStatus, orderItemId string, orderId string) error
+	DeleteTablesSessionById(ctx context.Context, tableSessionId *uuid.UUID, tableNumber int, phoneNumber string) error
 	GetTableValidationByTableAndPhone(ctx context.Context, tableNumber int, phoneNumber string) (*models.TableValidation, error)
 	GetTableValidationByID(ctx context.Context, id uuid.UUID) (*models.TableValidation, error)
 	GetUnassignedTables(ctx context.Context) ([]models.TableValidation, error)
@@ -44,21 +45,66 @@ type orderRepo struct {
 	pool *pgxpool.Pool
 }
 
-func (r *orderRepo) DeleteTablesSessionById(ctx context.Context, tableSessionId *uuid.UUID) error {
+func (r *orderRepo) UpdateOrderItemStatus(ctx context.Context, status *models.OrderStatus, orderItemId string, orderId string) error {
 
-	query := `
-		DELETE FROM table_session
-		WHERE id = $1
-		RETURNING id
-	`
+	// Basic validation (avoid nil pointer issues)
+	if status == nil || orderItemId == "" || orderId == "" {
+		return fmt.Errorf("status, orderItemId, and orderId are required")
+	}
 
-	var deletedID uuid.UUID
-	err := r.pool.QueryRow(ctx, query, tableSessionId).Scan(&deletedID)
+	var updatedID uuid.UUID
+
+	err := r.pool.QueryRow(ctx, `
+		UPDATE order_items oi
+		SET status = $1
+		FROM orders o
+		JOIN table_session ts ON ts.id = o.table_session_id
+		WHERE oi.id = $2
+		  AND oi.order_id = $3
+		  AND o.id = oi.order_id
+		  AND ts.close_time IS NULL
+		  AND ts.open_time IS NOT NULL
+		RETURNING oi.id
+	`, status, orderItemId, orderId).Scan(&updatedID)
+
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("order item not found, order mismatch, or table session closed")
+		}
 		return err
 	}
 
 	return nil
+}
+
+func (r *orderRepo) DeleteTablesSessionById(ctx context.Context, tableSessionId *uuid.UUID, tableNumber int, phoneNumber string) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var deletedSessionID uuid.UUID
+	err = tx.QueryRow(ctx, `
+        DELETE FROM table_session
+        WHERE id = $1
+        RETURNING id
+    `, tableSessionId).Scan(&deletedSessionID)
+	if err != nil {
+		return err
+	}
+
+	var deletedValidationID uuid.UUID
+	err = tx.QueryRow(ctx, `
+        DELETE FROM table_validation
+        WHERE phone_number = $1 AND table_number = $2
+        RETURNING id
+    `, phoneNumber, tableNumber).Scan(&deletedValidationID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (r *orderRepo) GetTableValidationByTableAndPhone(ctx context.Context, tableNumber int, phoneNumber string) (*models.TableValidation, error) {
