@@ -117,12 +117,12 @@ type WaiterApprovalRequest struct {
 }
 
 type TableValidation struct {
-	ID          uuid.UUID  `db:"id" json:"id"`                     // UUID primary key
-	TableNumber int        `db:"table_number" json:"table_number"` // INT NOT NULL
-	PhoneNumber string     `db:"phone_number" json:"phone_number"` // TEXT NOT NULL
-	WaiterID    *uuid.UUID `db:"waiter_id" json:"waiter_id"`       // Nullable UUID reference
-	CreatedAt   time.Time  `db:"created_at" json:"created_at"`     // TIMESTAMPTZ NOT NULL
-	UpdatedAt   time.Time  `db:"updated_at" json:"updated_at"`     // TIMESTAMPTZ NOT NULL
+	ID          uuid.UUID  `db:"id" json:"id"`                         // UUID primary key
+	TableNumber int        `db:"table_number" json:"table_number"`     // INT NOT NULL
+	PhoneNumber string     `db:"phone_number" json:"phone_number"`     // TEXT NOT NULL
+	WaiterID    *uuid.UUID `db:"waiter_id" json:"waiter_id,omitempty"` // Nullable UUID reference
+	CreatedAt   time.Time  `db:"created_at" json:"created_at"`         // TIMESTAMPTZ NOT NULL
+	UpdatedAt   time.Time  `db:"updated_at" json:"updated_at"`         // TIMESTAMPTZ NOT NULL
 }
 
 type UpdateOrderItem struct {

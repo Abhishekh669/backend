@@ -16,11 +16,15 @@ func OrderServiceRouter(router *gin.RouterGroup, app *app.App) {
 	orderServiceRoute.GET("/get-request-by-table-session-id/:table-session-id", middlewares.UserMiddleware(), app.Orderhandler.GetOrderRequestByTableSessionIdHandler)
 
 	orderServiceRoute.POST("/table-approval", app.Orderhandler.CreateNewApprovalRequestHandler)
-	orderServiceRoute.POST("/table-approve-by-waiter", middlewares.UserMiddleware(), app.Orderhandler.ApproveTableByWaiterHandler)
+	orderServiceRoute.PUT("/table-approve-by-waiter", middlewares.UserMiddleware(), app.Orderhandler.ApproveTableByWaiterHandler)
 	orderServiceRoute.DELETE("/table-delete/:id", middlewares.UserMiddleware(), app.Orderhandler.DeleteTableValidationHandler)
 	orderServiceRoute.DELETE("/table-session-delete/:id", middlewares.UserMiddleware(), app.Orderhandler.DeleteTableSessionByIdHandler)
 	orderServiceRoute.GET("/tables-unassigned", middlewares.UserMiddleware(), app.Orderhandler.GetUnassignedTablesHandler)
 	orderServiceRoute.GET("/get-table-validation-by-id/:id", app.Orderhandler.GetTableValidationByIDHandler)
 	orderServiceRoute.GET("/get-table-validation-by-phone-n-number", app.Orderhandler.GetTableValidationByPhoneAndTableHandler)
 	orderServiceRoute.GET("/get-table-validation-from-token", middlewares.CustomerMiddleware(app), app.Orderhandler.GetTableValidationFromTokenHandler)
+
+	//mobile seciton
+	orderServiceRoute.PUT("/update-order-item", middlewares.UserMiddleware(), app.Orderhandler.UpdateOrderItemHandler)
+	orderServiceRoute.GET("/get-all-approval-requests", middlewares.UserMiddleware(), app.Orderhandler.GetAllApprovalRequestHandler)
 }

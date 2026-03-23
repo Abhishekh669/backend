@@ -18,6 +18,7 @@ import (
 
 // OrderRepo interface defines all order-related operations
 type OrderRepo interface {
+	GetAllOrderApprovalRequest(ctx context.Context) ([]models.TableValidation, error)
 	UpdateOrderItemStatus(ctx context.Context, status *models.OrderStatus, orderItemId string, orderId string) error
 	DeleteTablesSessionById(ctx context.Context, tableSessionId *uuid.UUID, tableNumber int, phoneNumber string) error
 	GetTableValidationByTableAndPhone(ctx context.Context, tableNumber int, phoneNumber string) (*models.TableValidation, error)
@@ -43,6 +44,59 @@ type OrderRepo interface {
 // orderRepo implements OrderRepo interface
 type orderRepo struct {
 	pool *pgxpool.Pool
+}
+
+func (r *orderRepo) GetAllOrderApprovalRequest(ctx context.Context) ([]models.TableValidation, error) {
+	query := `
+    SELECT
+        id,
+        table_number,
+        phone_number,
+        waiter_id,
+        created_at,
+        updated_at
+    FROM table_validation
+    WHERE created_at >= NOW() - INTERVAL '24 hours'
+    AND waiter_id IS NULL        -- ✅ pending = not yet assigned a waiter
+    ORDER BY created_at ASC
+`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []models.TableValidation{}, nil
+		}
+		return nil, fmt.Errorf("failed to query table validations: %w", err)
+	}
+	defer rows.Close()
+
+	var result []models.TableValidation
+	for rows.Next() {
+		var tv models.TableValidation
+		err := rows.Scan(
+			&tv.ID,
+			&tv.TableNumber,
+			&tv.PhoneNumber,
+			&tv.WaiterID,
+			&tv.CreatedAt,
+			&tv.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan table validation row: %w", err)
+		}
+		result = append(result, tv)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
+
+	// Return empty slice instead of nil if no rows found
+	if result == nil {
+		return []models.TableValidation{}, nil
+	}
+
+	return result, nil
 }
 
 func (r *orderRepo) UpdateOrderItemStatus(ctx context.Context, status *models.OrderStatus, orderItemId string, orderId string) error {
@@ -222,47 +276,67 @@ func (r *orderRepo) DeleteTableApprovalByID(ctx context.Context, id uuid.UUID) e
 
 // TODO : run a go routein for dleign the table sesiosn in which teh waiter is not assigned or create time ois mroe than 10 miutes
 // ApproveTableByWaiter assigns a waiter to a table validation request
-func (r *orderRepo) ApproveTableByWaiter(ctx context.Context, req *models.WaiterApprovalRequest) error {
-	query := `
-		UPDATE table_validation
-		SET 
-			waiter_id = $1,
-			table_number = $2,
-			phone_number = $3,
-			updated_at = NOW()
-		WHERE id = $4
-		RETURNING id
-	`
-
-	var id uuid.UUID
-	err := r.pool.QueryRow(ctx, query, req.WaiterId, req.TableNumber, req.Phone, req.Id).Scan(&id)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// CreateNewApprovalRequest inserts a new table validation record and returns the created row
 func (r *orderRepo) CreateNewApprovalRequest(ctx context.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error) {
-	fmt.Println("this is request in repo: ", req)
 
-	// Start a transaction
-	tx, err := r.pool.Begin(ctx)
+	query := `
+        INSERT INTO table_validation (table_number, phone_number)
+        VALUES ($1, $2)
+        RETURNING id, table_number, phone_number, waiter_id, created_at, updated_at
+    `
+
+	var tv models.TableValidation
+
+	err := r.pool.QueryRow(ctx, query, req.TableNumber, req.Phone).Scan(
+		&tv.ID,
+		&tv.TableNumber,
+		&tv.PhoneNumber,
+		&tv.WaiterID,
+		&tv.CreatedAt,
+		&tv.UpdatedAt,
+	)
+
 	if err != nil {
 		return nil, err
 	}
+
+	return &tv, nil
+}
+
+// ApproveTableByWaiter assigns a waiter and handles all table session logic
+func (r *orderRepo) ApproveTableByWaiter(ctx context.Context, req *models.WaiterApprovalRequest) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
 	defer tx.Rollback(ctx)
+
+	// Step 0: Check if this table already has an approved request (waiter_id IS NOT NULL)
+	// If yes, reject immediately — table is already taken
+	var alreadyApprovedID uuid.UUID
+	checkAlreadyApprovedQuery := `
+        SELECT id FROM table_validation
+        WHERE table_number = $1
+        AND waiter_id IS NOT NULL
+        LIMIT 1
+    `
+	err = tx.QueryRow(ctx, checkAlreadyApprovedQuery, req.TableNumber).Scan(&alreadyApprovedID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("failed to check existing approval: %w", err)
+	}
+	if err == nil {
+		// A row was found — table already approved
+		return fmt.Errorf("table %d is already approved and occupied", req.TableNumber)
+	}
 
 	// Step 1: Check if an active table session already exists for this table number
 	tableSession := &models.TableSession{}
 	checkSessionQuery := `
-		SELECT id, table_number, open_time, close_time, status, created_at, updated_at
-		FROM table_session
-		WHERE open_time IS NOT NULL
-		AND close_time IS NULL
-		AND table_number = $1
-	`
+        SELECT id, table_number, open_time, close_time, status, created_at, updated_at
+        FROM table_session
+        WHERE open_time IS NOT NULL
+        AND close_time IS NULL
+        AND table_number = $1
+    `
 	err = tx.QueryRow(ctx, checkSessionQuery, req.TableNumber).Scan(
 		&tableSession.ID,
 		&tableSession.TableNumber,
@@ -273,153 +347,168 @@ func (r *orderRepo) CreateNewApprovalRequest(ctx context.Context, req *models.Cu
 		&tableSession.UpdatedAt,
 	)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return nil, err
-	}
-
-	// If a session exists, table is already booked
-	if err == nil {
-		return nil, errors.New("table is already booked")
+		return err
 	}
 
 	// Step 2: No active session found — create a new table session
-	createSessionQuery := `
-		INSERT INTO table_session (table_number, open_time, status)
-		VALUES ($1, NOW(), 'occupied')
-		RETURNING id, table_number, open_time, close_time, status, created_at, updated_at
-	`
-	err = tx.QueryRow(ctx, createSessionQuery, req.TableNumber).Scan(
-		&tableSession.ID,
-		&tableSession.TableNumber,
-		&tableSession.OpenTime,
-		&tableSession.CloseTime,
-		&tableSession.Status,
-		&tableSession.CreatedAt,
-		&tableSession.UpdatedAt,
-	)
-	if err != nil {
-		return nil, err
+	if errors.Is(err, pgx.ErrNoRows) {
+		createSessionQuery := `
+            INSERT INTO table_session (table_number, open_time, status)
+            VALUES ($1, NOW(), 'occupied')
+            RETURNING id, table_number, open_time, close_time, status, created_at, updated_at
+        `
+		err = tx.QueryRow(ctx, createSessionQuery, req.TableNumber).Scan(
+			&tableSession.ID,
+			&tableSession.TableNumber,
+			&tableSession.OpenTime,
+			&tableSession.CloseTime,
+			&tableSession.Status,
+			&tableSession.CreatedAt,
+			&tableSession.UpdatedAt,
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Step 3: Update table_status to 'occupied'
 	updateTableStatusQuery := `
-		UPDATE table_status
-		SET status = $1
-		WHERE table_number = $2
-	`
+        UPDATE table_status
+        SET status = $1
+        WHERE table_number = $2
+    `
 	_, err = tx.Exec(ctx, updateTableStatusQuery, models.TableOccupied, req.TableNumber)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Step 4: Create the approval request in table_validation
-	insertValidationQuery := `
-		INSERT INTO table_validation (table_number, phone_number)
-		VALUES ($1, $2)
-		RETURNING id, table_number, phone_number, waiter_id, created_at, updated_at
-	`
-	var tv models.TableValidation
-	err = tx.QueryRow(ctx, insertValidationQuery, req.TableNumber, req.Phone).Scan(
-		&tv.ID,
-		&tv.TableNumber,
-		&tv.PhoneNumber,
-		&tv.WaiterID,
-		&tv.CreatedAt,
-		&tv.UpdatedAt,
-	)
+	// Step 4: Assign waiter to the approved table_validation record
+	updateValidationQuery := `
+        UPDATE table_validation
+        SET
+            waiter_id = $1,
+            updated_at = NOW()
+        WHERE id = $2
+        RETURNING id
+    `
+	var id uuid.UUID
+	err = tx.QueryRow(ctx, updateValidationQuery, req.WaiterId, req.Id).Scan(&id)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	// Commit the transaction
-	if err = tx.Commit(ctx); err != nil {
-		return nil, err
+	// Step 5: Delete all OTHER pending requests for the same table number
+	deleteDuplicatesQuery := `
+        DELETE FROM table_validation
+        WHERE table_number = $1
+        AND id != $2
+        AND waiter_id IS NULL
+    `
+	_, err = tx.Exec(ctx, deleteDuplicatesQuery, req.TableNumber, req.Id)
+	if err != nil {
+		return fmt.Errorf("failed to delete duplicate table requests: %w", err)
 	}
 
-	return &tv, nil
+	return tx.Commit(ctx)
 }
-
 func (r *orderRepo) NewGetAllOrderForStatus(ctx context.Context) ([]models.CustomerOrderRequest, error) {
 	query := `
-        WITH filtered_orders AS (
-            -- First, get all orders that have at least one not-approved item
-            SELECT DISTINCT o.id
-            FROM orders o
-            INNER JOIN order_items oi ON oi.order_id = o.id
-            WHERE oi.status NOT IN ('not-approved', 'completed')
-        ),
-        session_data AS (
-            SELECT 
-                ts.id,
-                ts.table_number,
-                ts.open_time,
-                ts.close_time,
-                ts.status,
-                ts.created_at,
-                ts.updated_at
-            FROM table_session ts
-            WHERE ts.status = 'occupied' 
-                AND ts.open_time IS NOT NULL
-                AND ts.close_time IS NULL
-        )
-        SELECT 
-            json_agg(
-                json_build_object(
-                    'id', o.id,
-                    'status', o.status,
-                    'customer_name', o.customer_name,
-                    'customer_phone', o.customer_phone,
-                    'note', o.note,
-                    'table_session', json_build_object(
-                        'id', ts.id,
-                        'table_number', ts.table_number,
-                        'open_time', ts.open_time,
-                        'close_time', ts.close_time,
-                        'status', ts.status,
-                        'created_at', ts.created_at,
-                        'updated_at', ts.updated_at
-                    ),
-                    'order_items', (
-                        SELECT json_agg(
-                            json_build_object(
-                                'id', oi.id,
-                                'price', oi.price,
-                                'quantity', oi.quantity,
-                                'order_id', oi.order_id,
-                                'menu_id', oi.menu_item_id,
-                                'status', oi.status,
-                                'menu_name', mi.name,
-                                'menu_image', mi.image_url,
-                                'created_at', oi.created_at
-                            )
-                            ORDER BY oi.created_at DESC
-                        )
-                        FROM order_items oi
-                        LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
-                        WHERE oi.order_id = o.id AND oi.status != 'not-approved'
-                    )
-                )
-                ORDER BY ts.table_number, o.created_at DESC
-            ) as result
-        FROM session_data ts
-        INNER JOIN orders o ON o.table_session_id = ts.id
-        INNER JOIN filtered_orders fo ON fo.id = o.id
-        WHERE o.status NOT IN ('not-approved','completed')
-    `
+		WITH session_data AS (
+			SELECT 
+				ts.id,
+				ts.table_number,
+				ts.open_time,
+				ts.close_time,
+				ts.status,
+				ts.created_at,
+				ts.updated_at
+			FROM table_session ts
+			WHERE ts.status = 'occupied'
+				AND ts.open_time IS NOT NULL
+				AND ts.close_time IS NULL
+				-- ── 24-hour window ──────────────────────────────────────────
+				AND ts.open_time >= NOW() - INTERVAL '24 hours'
+		),
+		filtered_orders AS (
+			-- Orders that have at least one item visible to the kitchen
+			-- (anything except not-approved)
+			SELECT DISTINCT o.id
+			FROM orders o
+			INNER JOIN order_items oi ON oi.order_id = o.id
+			WHERE oi.status != 'not-approved'
+		)
+		SELECT
+			COALESCE(
+				json_agg(
+					json_build_object(
+						'id',             o.id,
+						'status',         o.status,
+						'customer_name',  o.customer_name,
+						'customer_phone', o.customer_phone,
+						'note',           o.note,
+						'table_session',  json_build_object(
+							'id',           ts.id,
+							'table_number', ts.table_number,
+							'open_time',    ts.open_time,
+							'close_time',   ts.close_time,
+							'status',       ts.status,
+							'created_at',   ts.created_at,
+							'updated_at',   ts.updated_at
+						),
+						'order_items', (
+							SELECT COALESCE(
+								json_agg(
+									json_build_object(
+										'id',         oi.id,
+										'price',      oi.price,
+										'quantity',   oi.quantity,
+										'order_id',   oi.order_id,
+										'menu_id',    oi.menu_item_id,
+										'status',     oi.status,
+										'menu_name',  mi.name,
+										'menu_image', mi.image_url,
+										'created_at', oi.created_at
+									)
+									-- oldest item first within each order
+									ORDER BY oi.created_at ASC
+								),
+								'[]'::json
+							)
+							FROM order_items oi
+							LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
+							WHERE oi.order_id = o.id
+								AND oi.status != 'not-approved'
+						)
+					)
+					-- oldest order first (frontend will re-sort for terminal tabs)
+					ORDER BY ts.table_number ASC, o.created_at ASC
+				),
+				'[]'::json
+			) AS result
+		FROM session_data ts
+		INNER JOIN orders o ON o.table_session_id = ts.id
+		INNER JOIN filtered_orders fo ON fo.id = o.id
+		WHERE o.status != 'not-approved'
+	`
 
 	var resultJSON []byte
 	err := r.pool.QueryRow(ctx, query).Scan(&resultJSON)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return []models.CustomerOrderRequest{}, nil
 		}
 		return nil, fmt.Errorf("failed to query order requests: %w", err)
+	}
+
+	// COALESCE guarantees valid JSON, but guard against empty slice
+	if len(resultJSON) == 0 {
+		return []models.CustomerOrderRequest{}, nil
 	}
 
 	var result []models.CustomerOrderRequest
 	if err := json.Unmarshal(resultJSON, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal result: %w", err)
 	}
-
 	return result, nil
 }
 func (r *orderRepo) NewGetTableSessionByTableAndPhone(ctx context.Context, tableNumber int, customerPhone string) (*models.CustomerOrderRequest, error) {

@@ -14,11 +14,13 @@ import (
 )
 
 type OrderService interface {
+	GetAllApprovalRequestService(c *gin.Context) ([]models.TableValidation, error)
+	UpdateOrderItemService(c *gin.Context, updateData *models.UpdateOrderItem) error
 	DeleteTableSessionByIdService(c *gin.Context, id *uuid.UUID, tableNumber int, phoneNumber string) error
 	GetTableValidationByPhoneNTable(ctx context.Context, phone string, tableNumber int) (string, ReqStatus, error)
 	GetTableValidationById(ctx context.Context, id uuid.UUID) (*models.TableValidation, error)
 	CreateNewApprovalRequestService(c *gin.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error)
-	ApproveTableByWaiterService(c *gin.Context, req *models.WaiterApprovalRequest) (string, error)
+	ApproveTableByWaiterService(c *gin.Context, req *models.WaiterApprovalRequest) error
 	DeleteTableValidationService(c *gin.Context, id uuid.UUID) error
 	GetUnassignedTablesService(c *gin.Context) ([]models.TableValidation, error)
 	GetAllOrderStatusService(c *gin.Context) ([]models.CustomerOrderRequest, error)
@@ -39,6 +41,14 @@ const (
 	OrderNotApproved ReqStatus = "not_approved"
 	OrderApproved    ReqStatus = "approved"
 )
+
+func (s *orderService) GetAllApprovalRequestService(c *gin.Context) ([]models.TableValidation, error) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewOrder)
+	if err != nil {
+		return nil, errors.New("user not authorized")
+	}
+	return s.repo.GetAllOrderApprovalRequest(c.Request.Context())
+}
 
 func (s *orderService) UpdateOrderItemService(c *gin.Context, updateData *models.UpdateOrderItem) error {
 	_, err := lib.HasPermissionCheck(c, rbac.UpdateOrder)
@@ -93,37 +103,28 @@ func (s *orderService) CreateNewApprovalRequestService(c *gin.Context, req *mode
 }
 
 // ── Approve Table By Waiter ────────────────────────────────
-func (s *orderService) ApproveTableByWaiterService(c *gin.Context, req *models.WaiterApprovalRequest) (string, error) {
+func (s *orderService) ApproveTableByWaiterService(c *gin.Context, req *models.WaiterApprovalRequest) error {
 	_, err := lib.HasPermissionCheck(c, rbac.CreateOrder)
 	if err != nil {
-		return "", errors.New("user not authorized")
+		return errors.New("user not authorized")
 	}
 
 	err = s.repo.ApproveTableByWaiter(c.Request.Context(), req)
 
 	if err != nil {
-		return "", errors.New("failed to approve table")
+		return errors.New("failed to approve table")
 	}
 
 	table, err := s.repo.GetTableValidationByTableAndPhone(c.Request.Context(), req.TableNumber, req.Phone)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	if table.WaiterID == nil {
-		return "", errors.New("Request is not approved")
-	}
-	sessionJwtData := lib.OrderApprovalDataType{
-		Id:          table.ID.String(),
-		PhoneNumber: table.PhoneNumber,
-		TableNumber: table.TableNumber,
+		return errors.New("Request is not approved")
 	}
 
-	sessionToken, err := lib.GenerateOrderApprovalToken(&sessionJwtData)
-	if err != nil {
-		return "", err
-	}
-	return sessionToken, nil
+	return nil
 }
 
 // ── Delete Table Validation By ID ─────────────────────────

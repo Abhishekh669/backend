@@ -222,8 +222,9 @@ var postgressSchemaOrderedTables = []struct {
     );
 
     -- Indexes for performance
-    CREATE INDEX IF NOT EXISTS idx_table_session_table_number
-      ON table_session(table_number);
+    CREATE UNIQUE INDEX IF NOT EXISTS unique_active_table
+ON table_session(table_number)
+WHERE close_time IS NULL;
    
   `,
 	},

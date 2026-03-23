@@ -16,6 +16,36 @@ type OrderHandler struct {
 	orderService services.OrderService
 }
 
+func (h *OrderHandler) GetAllApprovalRequestHandler(c *gin.Context) {
+	requests, err := h.orderService.GetAllApprovalRequestService(c)
+
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   "failed to get all orders reqeust ",
+		})
+	}
+	c.JSON(200, gin.H{
+		"success":  true,
+		"requests": requests,
+	})
+}
+
+func (h *OrderHandler) UpdateOrderItemHandler(c *gin.Context) {
+	var req models.UpdateOrderItem
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	if err := h.orderService.UpdateOrderItemService(c, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to update status", "success": false})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "updated successfully", "success": true})
+
+}
+
 func (h *OrderHandler) DeleteTableSessionByIdHandler(c *gin.Context) {
 	idParam := c.Param("id")
 	tableID, err := uuid.FromString(idParam)
@@ -189,13 +219,13 @@ func (h *OrderHandler) ApproveTableByWaiterHandler(c *gin.Context) {
 		return
 	}
 
-	token, err := h.orderService.ApproveTableByWaiterService(c, &req)
+	err := h.orderService.ApproveTableByWaiterService(c, &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "success": false})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Table approved successfully", "token": token})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "Table approved successfully"})
 }
 
 // ── Delete Table Validation by ID ────────────────────────
