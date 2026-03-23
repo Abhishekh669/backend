@@ -27,4 +27,5 @@ func OrderServiceRouter(router *gin.RouterGroup, app *app.App) {
 	//mobile seciton
 	orderServiceRoute.PUT("/update-order-item", middlewares.UserMiddleware(), app.Orderhandler.UpdateOrderItemHandler)
 	orderServiceRoute.GET("/get-all-approval-requests", middlewares.UserMiddleware(), app.Orderhandler.GetAllApprovalRequestHandler)
+
 }
