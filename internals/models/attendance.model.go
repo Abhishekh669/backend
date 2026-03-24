@@ -138,6 +138,21 @@ type CreateAttendanceLeave struct {
 	Message    string    `json:"message"`
 }
 
+type UserUpdateAttendanceLeave struct {
+	Id         uuid.UUID `json:"id"`
+	EmployeeID uuid.UUID `json:"employee_id"`
+	StartDate  time.Time `json:"start_date"`
+	EndDate    time.Time `json:"end_date"`
+	Message    string    `json:"message"`
+}
+
+type UserCreateAttendanceLeave struct {
+	EmployeeID string    `json:"employee_id"`
+	StartDate  time.Time `json:"start_date"`
+	EndDate    time.Time `json:"end_date"`
+	Message    string    `json:"message"`
+}
+
 type UpdateAttendanceLeave struct {
 	ID                uuid.UUID   `json:"id"`
 	EmployeeID        uuid.UUID   `json:"employee_id"`

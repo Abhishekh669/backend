@@ -16,22 +16,86 @@ type AttendanceHandler struct {
 	attendanceService services.AttendanceService
 }
 
+type AttendanceStatus string
+
+const (
+	AttendanceExist   AttendanceStatus = "attendance_exist"
+	AttendanceUnExist AttendanceStatus = "attendance_unexist"
+	AttendanceError   AttendanceStatus = "attendance_error"
+)
+
+func (h *AttendanceHandler) UpdateUserLeaveRequest(c *gin.Context) {
+	var req models.UserUpdateAttendanceLeave
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	if err := h.attendanceService.UpdateUserAttendanceService(c, &req); err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "leave request updated successfully",
+		"success": true,
+	})
+}
+
+func (h *AttendanceHandler) GetTodayAttendanceHandler(c *gin.Context) {
+	attendance, err := h.attendanceService.GetTodayAttendanceService(c)
+	var status AttendanceStatus
+
+	if err != nil {
+		status = AttendanceError
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"status":  status,
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	if attendance != nil {
+		status = AttendanceExist
+
+		c.JSON(http.StatusOK, gin.H{
+			"status":     status,
+			"success":    true,
+			"attendance": attendance,
+		})
+		return
+	}
+
+	// attendance == nil AND err == nil
+	status = AttendanceUnExist
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":     status,
+		"success":    true,
+		"attendance": nil,
+	})
+}
+
 func (h *AttendanceHandler) CancelLeaveRequest(c *gin.Context) {
 	leaveIDStr := c.Param("id")
 
 	leaveID, err := uuid.FromString(leaveIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid leave id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid leave id", "success": false})
 		return
 	}
 
 	if err := h.attendanceService.CancelLeaveRequest(c, &leaveID); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "leave request cancelled successfully",
+		"success": true,
 	})
 }
 
@@ -40,17 +104,18 @@ func (h *AttendanceHandler) DeleteLeaveRequest(c *gin.Context) {
 
 	leaveID, err := uuid.FromString(leaveIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid leave id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid leave id", "success": false})
 		return
 	}
 
 	if err := h.attendanceService.DeleteLeaveRequest(c, &leaveID); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "leave request deleted successfully",
+		"success": true,
 	})
 }
 
@@ -58,12 +123,12 @@ func (h *AttendanceHandler) UpdateLeaveRequest(c *gin.Context) {
 	var req models.UpdateAttendanceLeave
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
 		return
 	}
 
 	if err := h.attendanceService.UpdateLeaveRequest(c, &req); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
 		return
 	}
 
@@ -74,20 +139,35 @@ func (h *AttendanceHandler) UpdateLeaveRequest(c *gin.Context) {
 }
 
 func (h *AttendanceHandler) CreateEmployeeRequest(c *gin.Context) {
-	var req models.CreateAttendanceLeave
+	var req models.UserCreateAttendanceLeave
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
 		return
 	}
 
-	if err := h.attendanceService.CreateEmployeeRequest(c, &req); err != nil {
-		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+	userID, err := uuid.FromString(req.EmployeeID)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	newEmployeeData := models.CreateAttendanceLeave{
+		EmployeeID: userID,
+		StartDate:  req.StartDate,
+		EndDate:    req.EndDate,
+		Message:    req.Message,
+	}
+
+	if err := h.attendanceService.CreateEmployeeRequest(c, &newEmployeeData); err != nil {
+		fmt.Println("thisis ain db error while creating", err)
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "leave request created successfully",
+		"success": true,
 	})
 }
 

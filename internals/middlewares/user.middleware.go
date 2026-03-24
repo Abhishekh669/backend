@@ -1,6 +1,7 @@
 package middlewares
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/Abhishekh669/backend/internals/lib"
@@ -28,6 +29,8 @@ func UserMiddleware() gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+
+		fmt.Println("this is claims in user middleware: ", claims)
 
 		c.Set("user_id", claims.UserId)
 		c.Set("user_email", claims.Email)

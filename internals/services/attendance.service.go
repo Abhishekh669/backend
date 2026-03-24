@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/Abhishekh669/backend/internals/lib"
 	"github.com/Abhishekh669/backend/internals/models"
@@ -12,6 +13,8 @@ import (
 )
 
 type AttendanceService interface {
+	UpdateUserAttendanceService(c *gin.Context, req *models.UserUpdateAttendanceLeave) error
+	GetTodayAttendanceService(c *gin.Context) (*models.AttendanceLeaveResponse, error)
 	CancelLeaveRequest(c *gin.Context, leaveId *uuid.UUID) error
 	DeleteLeaveRequest(c *gin.Context, leaveId *uuid.UUID) error
 	UpdateLeaveRequest(c *gin.Context, req *models.UpdateAttendanceLeave) error
@@ -33,12 +36,47 @@ func GetUserIDFromContext(c *gin.Context) (uuid.UUID, error) {
 		return uuid.Nil, errors.New("user_id not found in context")
 	}
 
-	userID, ok := value.(uuid.UUID)
+	userIDStr, ok := value.(string)
 	if !ok {
 		return uuid.Nil, errors.New("invalid user_id type in context")
 	}
 
+	userID, err := uuid.FromString(userIDStr)
+	if err != nil {
+		return uuid.Nil, errors.New("invalid uuid format")
+	}
+
 	return userID, nil
+}
+
+func (s *attendanceService) CancelLeaveAttendanceByAdmin(c *gin.Context, leaveId *uuid.UUID) error {
+	_, err := lib.HasPermissionCheck(c, rbac.UpdateAttendance)
+	if err != nil {
+		return errors.New("user not authorized")
+	}
+	_, err = s.repo.CancelLeaveRequestByAdmin(c.Request.Context(), leaveId)
+	if err != nil {
+		return err
+	}
+	//send the leave mail to the user now
+	return nil
+}
+
+func (s *attendanceService) UpdateUserAttendanceService(c *gin.Context, req *models.UserUpdateAttendanceLeave) error {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewLeaveRequest)
+	if err != nil {
+		return errors.New("user not authorized")
+	}
+	return s.repo.UpdateCustomerLeave(c.Request.Context(), req)
+}
+
+func (s *attendanceService) GetTodayAttendanceService(c *gin.Context) (*models.AttendanceLeaveResponse, error) {
+
+	userId, err := GetUserIDFromContext(c)
+	if err != nil {
+		return nil, errors.New("failed to get employee id")
+	}
+	return s.repo.GetTodayAttendanceLeave(c.Request.Context(), userId)
 }
 
 func (s *attendanceService) GetAttendanceRequestService(c *gin.Context) ([]models.AttendanceLeaveResponse, error) {
@@ -54,11 +92,6 @@ func (s *attendanceService) CancelLeaveRequest(
 	c *gin.Context,
 	leaveId *uuid.UUID,
 ) error {
-
-	_, err := lib.HasPermissionCheck(c, rbac.CancelLeaveRequest)
-	if err != nil {
-		return errors.New("user not authorized")
-	}
 
 	userId, err := GetUserIDFromContext(c)
 	if err != nil {
@@ -100,7 +133,6 @@ func (s *attendanceService) UpdateLeaveRequest(c *gin.Context, req *models.Updat
 	)
 }
 func (s *attendanceService) CreateEmployeeRequest(c *gin.Context, req *models.CreateAttendanceLeave) error {
-
 	_, err := lib.HasPermissionCheck(c, rbac.ViewLeaveRequest)
 	if err != nil {
 		return errors.New("user not authorized")
@@ -108,8 +140,11 @@ func (s *attendanceService) CreateEmployeeRequest(c *gin.Context, req *models.Cr
 
 	userId, err := GetUserIDFromContext(c)
 	if err != nil {
-		return errors.New("failed to cancel request")
+		fmt.Println("thisis userid : ", userId)
+		return errors.New("failed to create employ leave request")
 	}
+
+	fmt.Println("iam next one")
 
 	// Ensure employee cannot spoof employee_id
 	req.EmployeeID = userId

@@ -21,5 +21,9 @@ func AttendanceServiceRouter(router *gin.RouterGroup, app *app.App) {
 
 	attendanceServiceRoute.DELETE("/leave/:id", middlewares.UserMiddleware(), app.AttendanceHandler.DeleteLeaveRequest)
 
-	attendanceServiceRoute.PATCH("/leave/:id/cancel", middlewares.UserMiddleware(), app.AttendanceHandler.CancelLeaveRequest)
+	attendanceServiceRoute.PUT("/leave/:id/cancel", middlewares.UserMiddleware(), app.AttendanceHandler.CancelLeaveRequest)
+
+	attendanceServiceRoute.GET("/get-today-attendance", middlewares.UserMiddleware(), app.AttendanceHandler.GetTodayAttendanceHandler)
+
+	attendanceServiceRoute.PUT("/update-user-leave", middlewares.UserMiddleware(), app.AttendanceHandler.UpdateUserLeaveRequest)
 }
