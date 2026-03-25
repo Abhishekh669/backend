@@ -315,8 +315,6 @@ func (h *OrderHandler) GetOrderRequestByTableNumberNPhone(c *gin.Context) {
 	// Call service to get order request
 	orderRequestByPhone, err := h.orderService.GetOrderReqeustFromTableNumberAndPhoneNumber(c, tableNumber, phoneNumber)
 
-	fmt.Println("this is order request by phone  and table  : ", orderRequestByPhone)
-
 	if err != nil {
 		// Handle different error cases
 		if strings.Contains(err.Error(), "no active session found") {
@@ -411,6 +409,8 @@ func (h *OrderHandler) ApproveCustomerOrderHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
 		return
 	}
+
+	fmt.Println("thisi s order data from frontend : ", orderData)
 
 	err := h.orderService.ApproveCustomerOrder(c, orderData)
 	fmt.Println("this isthe error in order approval : ", err)

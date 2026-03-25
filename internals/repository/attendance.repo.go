@@ -87,21 +87,31 @@ func (r *attendanceRepo) UpdateCustomerLeave(c context.Context, req *models.User
 }
 
 func (r *attendanceRepo) GetTodayAttendanceLeave(c context.Context, empUUID uuid.UUID) (*models.AttendanceLeaveResponse, error) {
-	fmt.Println("this is the attendance for todayd : ", empUUID)
 	errMessage := "failed to get today's attendance leave"
 
 	var leave models.AttendanceLeaveResponse
 	err := r.pool.QueryRow(c, `
 		SELECT
-			al.id, al.employee_id, u.name, u.email, u.image,
-			al.checked_by, al.start_date, al.end_date,
-			al.message, al.supervisor_message, al.status,
-			al.created_at, al.updated_at
+			al.id,
+			al.employee_id,
+			u.name,
+			u.email,
+			u.image,
+			al.checked_by,
+			al.start_date,
+			al.end_date,
+			al.message,
+			al.supervisor_message,
+			al.status,
+			al.created_at,
+			al.updated_at
 		FROM attendance_leave al
 		INNER JOIN users u ON u.id = al.employee_id
 		WHERE
 			al.employee_id = $1
-			AND CURRENT_DATE BETWEEN DATE(al.start_date) AND DATE(al.end_date)
+			AND (al.start_date AT TIME ZONE 'Asia/Kathmandu')::DATE <= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+			AND (al.end_date   AT TIME ZONE 'Asia/Kathmandu')::DATE >= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+		ORDER BY al.created_at DESC
 		LIMIT 1
 	`, empUUID).Scan(
 		&leave.ID,
@@ -118,11 +128,9 @@ func (r *attendanceRepo) GetTodayAttendanceLeave(c context.Context, empUUID uuid
 		&leave.CreatedAt,
 		&leave.UpdatedAt,
 	)
-	fmt.Println("iambeingacllaaed for today attendace")
 	if err != nil {
-		fmt.Println("todya is error : ", err)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil // no active leave today — not an error
+			return nil, nil
 		}
 		log.Printf("error getting today's attendance leave: %v", err)
 		return nil, errors.New(errMessage)
@@ -889,30 +897,25 @@ func (r *attendanceRepo) UpdateLeaveRequest(c context.Context, req *models.Updat
 }
 
 func (r *attendanceRepo) CreateEmployeeRequest(c context.Context, req *models.CreateAttendanceLeave) error {
-	// Basic validation
 	if req.StartDate.After(req.EndDate) {
 		return fmt.Errorf("start date cannot be after end date")
 	}
 
-	// Start transaction
 	tx, err := r.pool.Begin(c)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer tx.Rollback(c)
 
-	fmt.Println("iamherinreposeciotn")
-
-	// Check if employee already submitted a leave request today
+	// Check if employee already submitted a leave request today (Kathmandu time)
 	var alreadyRequested bool
 	err = tx.QueryRow(c, `
-    SELECT EXISTS(
-        SELECT 1 FROM attendance_leave
-        WHERE employee_id = $1
-          AND created_at >= CURRENT_DATE
-          AND created_at < CURRENT_DATE + INTERVAL '1 day'
-    )
-`, req.EmployeeID).Scan(&alreadyRequested)
+		SELECT EXISTS(
+			SELECT 1 FROM attendance_leave
+			WHERE employee_id = $1
+			  AND (created_at AT TIME ZONE 'Asia/Kathmandu')::DATE = (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+		)
+	`, req.EmployeeID).Scan(&alreadyRequested)
 	if err != nil {
 		return fmt.Errorf("failed to check existing leave request: %w", err)
 	}
@@ -920,18 +923,26 @@ func (r *attendanceRepo) CreateEmployeeRequest(c context.Context, req *models.Cr
 		return fmt.Errorf("you have already submitted a leave request today")
 	}
 
-	// Insert leave request
+	// Insert — store dates normalized to Asia/Kathmandu timezone
 	_, err = tx.Exec(c, `
-        INSERT INTO attendance_leave (
-            employee_id,
-            start_date,
-            end_date,
-            message,
-            status,
-            created_at,
-            updated_at
-        ) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-    `,
+		INSERT INTO attendance_leave (
+			employee_id,
+			start_date,
+			end_date,
+			message,
+			status,
+			created_at,
+			updated_at
+		) VALUES (
+			$1,
+			$2::TIMESTAMPTZ AT TIME ZONE 'Asia/Kathmandu',
+			$3::TIMESTAMPTZ AT TIME ZONE 'Asia/Kathmandu',
+			$4,
+			$5,
+			NOW(),
+			NOW()
+		)
+	`,
 		req.EmployeeID,
 		req.StartDate,
 		req.EndDate,
@@ -945,7 +956,6 @@ func (r *attendanceRepo) CreateEmployeeRequest(c context.Context, req *models.Cr
 		return fmt.Errorf("failed to create leave request: %w", err)
 	}
 
-	// Commit transaction
 	if err = tx.Commit(c); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}

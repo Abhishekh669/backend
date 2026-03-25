@@ -72,14 +72,15 @@ type ApproveOrderItem struct {
 }
 
 type ApproveOrderType struct {
-	ID             uuid.UUID          `db:"id" json:"id"`
-	TableSessionID uuid.UUID          `db:"table_session_id" json:"table_session_id"`
-	CustomerName   *string            `db:"customer_name" json:"customer_name,omitempty"`
-	CustomerPhone  *string            `db:"customer_phone" json:"customer_phone,omitempty"`
-	WaiterId       *uuid.UUID         `db:"waiter_id" json:"waiter_id,omitempty"` // Changed to pointer for nullable
-	Note           *string            `db:"note" json:"note,omitempty"`
-	TableNumber    int                `db:"table_number" json:"table_number"`
-	OrderMenuItems []ApproveOrderItem `db:"order_menu_items" json:"order_menu_items"`
+	ID                uuid.UUID          `db:"id" json:"id"`
+	TableSessionID    uuid.UUID          `db:"table_session_id" json:"table_session_id"`
+	CustomerName      *string            `db:"customer_name" json:"customer_name,omitempty"`
+	CustomerPhone     *string            `db:"customer_phone" json:"customer_phone,omitempty"`
+	WaiterId          *uuid.UUID         `db:"waiter_id" json:"waiter_id,omitempty"` // Changed to pointer for nullable
+	Note              *string            `db:"note" json:"note,omitempty"`
+	TableNumber       int                `db:"table_number" json:"table_number"`
+	OrderMenuItems    []ApproveOrderItem `db:"order_menu_items" json:"order_menu_items"`
+	RemovedOrderItems []uuid.UUID        `json:"deleted_order_items"`
 }
 
 type OrderItemType struct {

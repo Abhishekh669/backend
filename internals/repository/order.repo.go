@@ -1494,7 +1494,9 @@ func (r *orderRepo) NewGetAllOrderRequest(ctx context.Context) ([]models.Custome
 	return result, nil
 }
 
+// TODO: instead of deleting reming from forntend send all the uiid to be deletd and deletei ndb no need to searc all qeury in db
 func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder *models.ApproveOrderType) (err error) {
+	fmt.Println("items to be deleted : ", approveOrder.RemovedOrderItems)
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to start transaction: %w", err)
@@ -1506,13 +1508,13 @@ func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder 
 		}
 	}()
 
-	// Optimize 1: Single query to get table session with lock to prevent race conditions
+	// Step 1: Single query to get table session with lock to prevent race conditions
 	var tableSession models.TableSession
 	query := `
         SELECT id, table_number, open_time, close_time, status, created_at, updated_at
         FROM table_session
         WHERE id = $1
-        FOR UPDATE  -- Lock the row to prevent concurrent modifications
+        FOR UPDATE
     `
 
 	err = tx.QueryRow(ctx, query, approveOrder.TableSessionID).Scan(
@@ -1524,7 +1526,6 @@ func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder 
 		&tableSession.CreatedAt,
 		&tableSession.UpdatedAt,
 	)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("no such table session found")
@@ -1532,33 +1533,27 @@ func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder 
 		return fmt.Errorf("failed to fetch table session: %w", err)
 	}
 
-	// Optimize 2: Batch table status updates if needed
+	// Step 2: Batch table status updates if table number changed
 	if tableSession.TableNumber != approveOrder.TableNumber {
-		// Use a single batch for multiple operations
 		batch := &pgx.Batch{}
 
-		// Update session table number
 		batch.Queue(`
             UPDATE table_session 
             SET table_number = $1, updated_at = NOW() 
             WHERE id = $2
         `, approveOrder.TableNumber, approveOrder.TableSessionID)
 
-		// Update old table status
 		batch.Queue(`
             UPDATE table_status SET status = 'empty' WHERE table_number = $1
         `, tableSession.TableNumber)
 
-		// Update new table status
 		batch.Queue(`
             UPDATE table_status SET status = 'occupied' WHERE table_number = $1
         `, approveOrder.TableNumber)
 
-		// Execute batch
 		br := tx.SendBatch(ctx, batch)
 		defer br.Close()
 
-		// Check results
 		for i := 0; i < 3; i++ {
 			_, err = br.Exec()
 			if err != nil {
@@ -1567,7 +1562,7 @@ func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder 
 		}
 	}
 
-	// Optimize 3: Update order with RETURNING to verify existence
+	// Step 3: Update order with RETURNING to verify existence
 	var updatedID uuid.UUID
 	updateOrder := `
         UPDATE orders SET
@@ -1596,16 +1591,33 @@ func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder 
 		return fmt.Errorf("failed to update order: %w", err)
 	}
 
-	// Optimize 4: Handle order items with complete sync logic
+	// Step 4: Delete explicitly removed order items
+	// Step 4: Delete explicitly removed order items
+	if len(approveOrder.RemovedOrderItems) > 0 {
+		removedIDs := make([]string, len(approveOrder.RemovedOrderItems))
+		for i, id := range approveOrder.RemovedOrderItems {
+			removedIDs[i] = id.String()
+		}
+
+		_, err = tx.Exec(ctx,
+			`DELETE FROM order_items WHERE order_id = $1 AND id::text = ANY($2)`,
+			approveOrder.ID,
+			removedIDs,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to delete removed order items: %w", err)
+		}
+	}
+
+	// Step 5: Upsert/update remaining order items
 	if len(approveOrder.OrderMenuItems) > 0 {
-		// Build bulk update/insert/delete using CTE with HasChanged flag
 		itemsJSON, err := json.Marshal(approveOrder.OrderMenuItems)
 		if err != nil {
 			return fmt.Errorf("failed to marshal items: %w", err)
 		}
 
 		bulkQuery := `
-            WITH 
+            WITH
             -- Lock existing items to prevent concurrent modifications
             existing_items AS (
                 SELECT id, menu_item_id, quantity, price
@@ -1615,7 +1627,7 @@ func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder 
             ),
             -- Parse incoming items from JSON
             incoming_items AS (
-                SELECT 
+                SELECT
                     (item->>'id')::uuid as id,
                     (item->>'menu_item_id')::uuid as menu_item_id,
                     (item->>'quantity')::float as quantity,
@@ -1623,54 +1635,46 @@ func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder 
                     (item->>'has_changed')::boolean as has_changed
                 FROM json_array_elements($1::json) as item
             ),
-            -- Identify items to DELETE (exist in DB but not in incoming items)
-            items_to_delete AS (
-                DELETE FROM order_items oi
-                USING existing_items ei
-                WHERE oi.id = ei.id
-                    AND ei.id NOT IN (SELECT id FROM incoming_items WHERE id IS NOT NULL)
-                RETURNING oi.id as deleted_id
-            ),
-            -- Update existing items that have changed (has_changed = true) or always update status to approved
+            -- Update existing items that have changed or need status set to approved
             updated_items AS (
                 UPDATE order_items oi
-                SET 
+                SET
                     quantity = ii.quantity,
                     price = ii.price,
-                    status = $3::order_status_enum  -- Always set status to approved
+                    status = $3::order_status_enum
                 FROM incoming_items ii
                 INNER JOIN existing_items ei ON ei.id = ii.id
                 WHERE oi.id = ei.id
-                    AND (ii.has_changed = true OR oi.status != $3::order_status_enum)  -- Update if changed OR not already approved
-                    AND ii.quantity > 0  -- Only update if quantity > 0
+                    AND (ii.has_changed = true OR oi.status != $3::order_status_enum)
+                    AND ii.quantity > 0
                 RETURNING oi.id as updated_id
             ),
-            -- Delete items that have changed and have quantity <= 0
-            deleted_changed_items AS (
+            -- Delete items that are marked changed but have quantity <= 0
+            deleted_zero_qty_items AS (
                 DELETE FROM order_items oi
                 USING incoming_items ii
                 INNER JOIN existing_items ei ON ei.id = ii.id
-                WHERE oi.id = ei.id 
-                    AND ii.has_changed = true 
+                WHERE oi.id = ei.id
+                    AND ii.has_changed = true
                     AND ii.quantity <= 0
-                RETURNING oi.id as deleted_changed_id
+                RETURNING oi.id as deleted_id
             ),
-            -- Insert new items (those without IDs)
+            -- Insert new items (no ID = new item from frontend)
             inserted_items AS (
                 INSERT INTO order_items (order_id, menu_item_id, quantity, price, status, created_at)
-                SELECT 
+                SELECT
                     $2,
                     ii.menu_item_id,
                     ii.quantity,
                     ii.price,
-                    $3::order_status_enum,  -- Set status to approved
+                    $3::order_status_enum,
                     NOW()
                 FROM incoming_items ii
                 WHERE ii.quantity > 0
-                    AND ii.id IS NULL  -- Only insert items without IDs (new items)
+                    AND ii.id IS NULL
                 RETURNING id as inserted_id
             ),
-            -- Update existing items that haven't changed but need status update to approved
+            -- Update status only for unchanged items not yet approved
             status_update_items AS (
                 UPDATE order_items oi
                 SET status = $3::order_status_enum
@@ -1678,42 +1682,33 @@ func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder 
                 INNER JOIN existing_items ei ON ei.id = ii.id
                 WHERE oi.id = ei.id
                     AND ii.has_changed = false
-                    AND oi.status != $3::order_status_enum  -- Only update if not already approved
+                    AND oi.status != $3::order_status_enum
                     AND ii.quantity > 0
                 RETURNING oi.id as status_updated_id
             )
-            -- Return summary of all operations
-            SELECT 
-                (SELECT COUNT(*) FROM items_to_delete) as deleted_count,
+            SELECT
                 (SELECT COUNT(*) FROM updated_items) as updated_count,
-                (SELECT COUNT(*) FROM deleted_changed_items) as deleted_changed_count,
+                (SELECT COUNT(*) FROM deleted_zero_qty_items) as deleted_zero_qty_count,
                 (SELECT COUNT(*) FROM inserted_items) as inserted_count,
                 (SELECT COUNT(*) FROM status_update_items) as status_updated_count
         `
 
-		var deletedCount, updatedCount, deletedChangedCount, insertedCount, statusUpdatedCount int
+		var updatedCount, deletedZeroQtyCount, insertedCount, statusUpdatedCount int
 		err = tx.QueryRow(ctx, bulkQuery, itemsJSON, approveOrder.ID, models.OrderStatusApproved).Scan(
-			&deletedCount, &updatedCount, &deletedChangedCount, &insertedCount, &statusUpdatedCount,
+			&updatedCount, &deletedZeroQtyCount, &insertedCount, &statusUpdatedCount,
 		)
 		if err != nil {
 			return fmt.Errorf("failed bulk item operation: %w", err)
 		}
-	} else {
-		// If no items in approveOrder, delete ALL existing items (customer removed everything)
-		_, err = tx.Exec(ctx, `DELETE FROM order_items WHERE order_id = $1`, approveOrder.ID)
-		if err != nil {
-			return fmt.Errorf("failed to delete all items: %w", err)
-		}
 	}
 
-	// Optimize 5: Update session status
+	// Step 6: Update session status to occupied
 	_, err = tx.Exec(ctx,
 		`UPDATE table_session 
          SET status='occupied', updated_at=NOW()
          WHERE id=$1`,
 		approveOrder.TableSessionID,
 	)
-
 	if err != nil {
 		return fmt.Errorf("failed to update session status: %w", err)
 	}
