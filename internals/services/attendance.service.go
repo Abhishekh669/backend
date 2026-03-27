@@ -3,7 +3,9 @@ package services
 import (
 	"errors"
 	"fmt"
+	"log"
 
+	"github.com/Abhishekh669/backend/internals/config"
 	"github.com/Abhishekh669/backend/internals/lib"
 	"github.com/Abhishekh669/backend/internals/models"
 	"github.com/Abhishekh669/backend/internals/rbac"
@@ -13,6 +15,11 @@ import (
 )
 
 type AttendanceService interface {
+	GetAllAttendanceRequestLeaveHistoryService(c *gin.Context, query *models.AttendanceLeaveHistory) (*repository.AttendanceLeaveByUserResponse, error)
+	GetAllAttendanceRequestLeaveByUserIdService(c *gin.Context, query *models.AttendanceLeaveHistory) (*repository.AttendanceLeaveByUserResponse, error)
+	CancelLeaveAttendanceByAdmin(c *gin.Context, leaveId *uuid.UUID) error
+	AcceptLeaveAttendanceByAdmin(c *gin.Context, leaveId *uuid.UUID) error
+	GetAllAttendanceRequestLeaveService(c *gin.Context) ([]models.AttendanceLeaveResponse, error)
 	UpdateUserAttendanceService(c *gin.Context, req *models.UserUpdateAttendanceLeave) error
 	GetTodayAttendanceService(c *gin.Context) (*models.AttendanceLeaveResponse, error)
 	CancelLeaveRequest(c *gin.Context, leaveId *uuid.UUID) error
@@ -49,16 +56,117 @@ func GetUserIDFromContext(c *gin.Context) (uuid.UUID, error) {
 	return userID, nil
 }
 
+func (s *attendanceService) GetAllAttendanceRequestLeaveHistoryService(c *gin.Context, query *models.AttendanceLeaveHistory) (*repository.AttendanceLeaveByUserResponse, error) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewAttendance)
+	if err != nil {
+		return nil, errors.New("user not authorized")
+	}
+
+	return s.repo.GetAllAttendanceLeaveRequestsHistory(c.Request.Context(), query.Limit, query.Page, query.FromDate, query.ToDate, (*models.LeaveStatus)(&query.Status))
+}
+
+func (s *attendanceService) GetAllAttendanceRequestLeaveByUserIdService(c *gin.Context, query *models.AttendanceLeaveHistory) (*repository.AttendanceLeaveByUserResponse, error) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewAttendance)
+	if err != nil {
+		fmt.Println("userare not authorized ")
+		return nil, errors.New("user not authorized")
+	}
+
+	userId, err := GetUserIDFromContext(c)
+	if err != nil {
+		fmt.Println("user id is not present ")
+		return nil, errors.New("failed to get employee id")
+	}
+
+	fmt.Println("iam now calling bd seciton ")
+
+	return s.repo.GetAttendanceLeaveRequestByUserId(c.Request.Context(), userId, query.Limit, query.Page, query.FromDate, query.ToDate, (*models.LeaveStatus)(&query.Status))
+}
+
+func (s *attendanceService) GetAllAttendanceRequestLeaveService(c *gin.Context) ([]models.AttendanceLeaveResponse, error) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewAttendance)
+	if err != nil {
+		return nil, errors.New("user not authorized")
+	}
+	return s.repo.GetAllAttendanceLeaveRequest(c.Request.Context())
+}
+
+func (s *attendanceService) AcceptLeaveAttendanceByAdmin(c *gin.Context, leaveId *uuid.UUID) error {
+	_, err := lib.HasPermissionCheck(c, rbac.UpdateAttendance)
+	if err != nil {
+		return errors.New("user not authorized")
+	}
+
+	userId, err := GetUserIDFromContext(c)
+	if err != nil {
+		return errors.New("failed to get employee id")
+	}
+
+	res, err := s.repo.AcceptLeaveRequestByAdmin(c.Request.Context(), *leaveId, userId)
+	if err != nil {
+		return err
+	}
+
+	emailData := lib.LeaveEmailData{
+		EmployeeName:      res.EmployeeName,
+		EmployeeEmail:     res.EmployeeEmail,
+		Status:            models.LeaveApproved,
+		StartDate:         res.StartDate,
+		EndDate:           res.EndDate,
+		Message:           res.Message,
+		SupervisorMessage: res.SupervisorMessage,
+	}
+
+	mailService := lib.NewMailService(lib.EmailConfig{
+		SMTPHost:       config.AppConfig.SMTPHost,
+		SMTPPort:       config.AppConfig.SMTPPort,
+		SenderEmail:    config.AppConfig.SMTPEmail,
+		SenderPassword: config.AppConfig.SMTPPassword,
+	})
+
+	if err := mailService.SendLeaveStatusEmail(res.EmployeeEmail, emailData); err != nil {
+		log.Printf("failed to send leave approval email to %s: %v", res.EmployeeEmail, err)
+	}
+
+	return nil
+}
+
 func (s *attendanceService) CancelLeaveAttendanceByAdmin(c *gin.Context, leaveId *uuid.UUID) error {
 	_, err := lib.HasPermissionCheck(c, rbac.UpdateAttendance)
 	if err != nil {
 		return errors.New("user not authorized")
 	}
-	_, err = s.repo.CancelLeaveRequestByAdmin(c.Request.Context(), leaveId)
+
+	userId, err := GetUserIDFromContext(c)
+	if err != nil {
+		return errors.New("failed to get employee id")
+	}
+
+	res, err := s.repo.CancelLeaveRequestByAdmin(c.Request.Context(), leaveId, userId)
 	if err != nil {
 		return err
 	}
-	//send the leave mail to the user now
+	emailData := lib.LeaveEmailData{
+		EmployeeName:      res.EmployeeName,
+		EmployeeEmail:     res.EmployeeEmail,
+		Status:            models.LeaveRejected,
+		StartDate:         res.StartDate,
+		EndDate:           res.EndDate,
+		Message:           res.Message,
+		SupervisorMessage: res.SupervisorMessage,
+	}
+
+	mailService := lib.NewMailService(lib.EmailConfig{
+		SMTPHost:       config.AppConfig.SMTPHost,
+		SMTPPort:       config.AppConfig.SMTPPort,
+		SenderEmail:    config.AppConfig.SMTPEmail,
+		SenderPassword: config.AppConfig.SMTPPassword,
+	})
+
+	if err := mailService.SendLeaveStatusEmail(res.EmployeeEmail, emailData); err != nil {
+		log.Printf("failed to send leave approval email to %s: %v", res.EmployeeEmail, err)
+	}
+
 	return nil
 }
 

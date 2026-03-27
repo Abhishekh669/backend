@@ -17,12 +17,15 @@ import (
 )
 
 type AttendanceRepo interface {
+	GetAllAttendanceLeaveRequestsHistory(c context.Context, limit, page int, fromDate *time.Time, toDate *time.Time, status *models.LeaveStatus) (*AttendanceLeaveByUserResponse, error)
+	AcceptLeaveRequestByAdmin(c context.Context, id uuid.UUID, checkedBy uuid.UUID) (*models.AttendanceLeaveResponse, error)
+	GetAllAttendanceLeaveRequest(c context.Context) ([]models.AttendanceLeaveResponse, error)
 	UpdateCustomerLeave(c context.Context, req *models.UserUpdateAttendanceLeave) error
 	GetTodayAttendanceLeave(c context.Context, empUUID uuid.UUID) (*models.AttendanceLeaveResponse, error)
 	NewUpdateLeaveRequest(c context.Context, req *models.UpdateAttendanceLeave) (*models.AttendanceLeave, error)
-	GetAttendanceLeaveRequestByUserId(c context.Context, employeeId string, limit, page int, fromDate *time.Time, toDate *time.Time, status *models.LeaveStatus) (*AttendanceLeaveByUserResponse, error)
+	GetAttendanceLeaveRequestByUserId(c context.Context, empUUID uuid.UUID, limit, page int, fromDate *time.Time, toDate *time.Time, status *models.LeaveStatus) (*AttendanceLeaveByUserResponse, error)
 	GetAttendanceRequest(c context.Context) ([]models.AttendanceLeaveResponse, error)
-	CancelLeaveRequestByAdmin(c context.Context, leaveId *uuid.UUID) (*models.AttendanceLeaveResponse, error)
+	CancelLeaveRequestByAdmin(c context.Context, leaveId *uuid.UUID, checkedBy uuid.UUID) (*models.AttendanceLeaveResponse, error)
 	CancelLeaveRequest(c context.Context, leaveId *uuid.UUID, requesterId *uuid.UUID) error
 	DeleteLeaveRequest(c context.Context, leaveId *uuid.UUID) error
 	UpdateLeaveRequest(c context.Context, req *models.UpdateAttendanceLeave) error
@@ -53,6 +56,178 @@ type AttendanceLeaveByUserResponse struct {
 	HasMore    bool                             `json:"has_more"`
 	NextOffset int                              `json:"next_offset"`
 	Stats      *AttendanceLeaveByUserStats      `json:"stats"`
+}
+
+func (r *attendanceRepo) GetAllAttendanceLeaveRequestsHistory(c context.Context, limit, page int, fromDate *time.Time, toDate *time.Time, status *models.LeaveStatus) (*AttendanceLeaveByUserResponse, error) {
+	errMessage := "failed to get attendance leave requests"
+	offset := page * limit
+
+	// ── Normalize optional filters to interface{} so pgx sends true NULL ──
+	var fromVal, toVal, statusVal interface{}
+	if fromDate != nil {
+		fromVal = *fromDate
+	}
+	if toDate != nil {
+		toVal = *toDate
+	}
+	if status != nil {
+		statusVal = *status
+	}
+
+	// ── List query ────────────────────────────────────────────────────────
+	rows, err := r.pool.Query(c, `
+        SELECT
+            al.id, al.employee_id, u.name, u.email, u.image,
+            al.checked_by, al.start_date, al.end_date,
+            al.message, al.supervisor_message, al.status,
+            al.created_at, al.updated_at
+        FROM attendance_leave al
+        INNER JOIN users u ON u.id = al.employee_id
+        WHERE
+            ($1::timestamptz IS NULL OR al.created_at >= $1::timestamptz)
+            AND ($2::timestamptz IS NULL OR al.created_at <= $2::timestamptz)
+            AND ($3::leave_status IS NULL OR al.status    = $3::leave_status)
+        ORDER BY al.created_at DESC
+        LIMIT $4 OFFSET $5
+    `, fromVal, toVal, statusVal, limit, offset)
+	if err != nil {
+		log.Printf("error getting leave requests: %v", err)
+		return nil, errors.New(errMessage)
+	}
+	defer rows.Close()
+
+	requests := make([]models.AttendanceLeaveResponse, 0, limit)
+	for rows.Next() {
+		var leave models.AttendanceLeaveResponse
+		if err := rows.Scan(
+			&leave.ID,
+			&leave.EmployeeID,
+			&leave.EmployeeName,
+			&leave.EmployeeEmail,
+			&leave.EmployeeImage,
+			&leave.CheckedBy,
+			&leave.StartDate,
+			&leave.EndDate,
+			&leave.Message,
+			&leave.SupervisorMessage,
+			&leave.Status,
+			&leave.CreatedAt,
+			&leave.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("%s: %w", errMessage, err)
+		}
+		requests = append(requests, leave)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, errors.New(errMessage)
+	}
+
+	// ── Count query ───────────────────────────────────────────────────────
+	var total int
+	err = r.pool.QueryRow(c, `
+        SELECT COUNT(*)
+        FROM attendance_leave
+        WHERE
+            ($1::timestamptz IS NULL OR created_at >= $1::timestamptz)
+            AND ($2::timestamptz IS NULL OR created_at <= $2::timestamptz)
+            AND ($3::leave_status IS NULL OR status    = $3::leave_status)
+    `, fromVal, toVal, statusVal).Scan(&total)
+	if err != nil {
+		return nil, errors.New(errMessage)
+	}
+
+	// ── Stats query (date filtered, all statuses) ─────────────────────────
+	var stats AttendanceLeaveByUserStats
+	err = r.pool.QueryRow(c, `
+        SELECT
+            COUNT(*)                                         AS total_requests,
+            COUNT(*) FILTER (WHERE status = 'pending')      AS pending_requests,
+            COUNT(*) FILTER (WHERE status = 'approved')     AS approved_requests,
+            COUNT(*) FILTER (WHERE status = 'rejected')     AS rejected_requests
+        FROM attendance_leave
+        WHERE
+            ($1::timestamptz IS NULL OR created_at >= $1::timestamptz)
+            AND ($2::timestamptz IS NULL OR created_at <= $2::timestamptz)
+    `, fromVal, toVal).Scan(
+		&stats.TotalRequests,
+		&stats.PendingRequests,
+		&stats.ApprovedRequests,
+		&stats.RejectedRequests,
+	)
+	if err != nil {
+		return nil, errors.New(errMessage)
+	}
+
+	hasMore := (page+1)*limit < total
+	nextOffset := page + 1
+
+	return &AttendanceLeaveByUserResponse{
+		Requests:   requests,
+		Total:      total,
+		HasMore:    hasMore,
+		NextOffset: nextOffset,
+		Stats:      &stats,
+	}, nil
+}
+
+func (r *attendanceRepo) GetAllAttendanceLeaveRequest(c context.Context) ([]models.AttendanceLeaveResponse, error) {
+	query := `
+		SELECT 
+			al.id,
+			al.employee_id,
+			u.name AS employee_name,
+			u.email AS employee_email,
+			u.image AS employee_image,
+			al.checked_by,
+			al.start_date,
+			al.end_date,
+			al.message,
+			al.supervisor_message,
+			al.status,
+			al.created_at,
+			al.updated_at
+		FROM attendance_leave al
+		INNER JOIN users u ON u.id = al.employee_id
+		WHERE al.status = 'pending'
+		ORDER BY al.created_at DESC
+	`
+
+	rows, err := r.pool.Query(c, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query attendance leave requests: %w", err)
+	}
+	defer rows.Close()
+
+	var leaves []models.AttendanceLeaveResponse
+
+	for rows.Next() {
+		var leave models.AttendanceLeaveResponse
+		err := rows.Scan(
+			&leave.ID,
+			&leave.EmployeeID,
+			&leave.EmployeeName,
+			&leave.EmployeeEmail,
+			&leave.EmployeeImage,
+			&leave.CheckedBy,
+			&leave.StartDate,
+			&leave.EndDate,
+			&leave.Message,
+			&leave.SupervisorMessage,
+			&leave.Status,
+			&leave.CreatedAt,
+			&leave.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan attendance leave row: %w", err)
+		}
+		leaves = append(leaves, leave)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
+
+	return leaves, nil
 }
 
 func (r *attendanceRepo) UpdateCustomerLeave(c context.Context, req *models.UserUpdateAttendanceLeave) error {
@@ -88,32 +263,52 @@ func (r *attendanceRepo) UpdateCustomerLeave(c context.Context, req *models.User
 
 func (r *attendanceRepo) GetTodayAttendanceLeave(c context.Context, empUUID uuid.UUID) (*models.AttendanceLeaveResponse, error) {
 	errMessage := "failed to get today's attendance leave"
-
 	var leave models.AttendanceLeaveResponse
 	err := r.pool.QueryRow(c, `
-		SELECT
-			al.id,
-			al.employee_id,
-			u.name,
-			u.email,
-			u.image,
-			al.checked_by,
-			al.start_date,
-			al.end_date,
-			al.message,
-			al.supervisor_message,
-			al.status,
-			al.created_at,
-			al.updated_at
-		FROM attendance_leave al
-		INNER JOIN users u ON u.id = al.employee_id
-		WHERE
-			al.employee_id = $1
-			AND (al.start_date AT TIME ZONE 'Asia/Kathmandu')::DATE <= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
-			AND (al.end_date   AT TIME ZONE 'Asia/Kathmandu')::DATE >= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
-		ORDER BY al.created_at DESC
-		LIMIT 1
-	`, empUUID).Scan(
+        SELECT
+            al.id,
+            al.employee_id,
+            u.name,
+            u.email,
+            u.image,
+            al.checked_by,
+            al.start_date,
+            al.end_date,
+            al.message,
+            al.supervisor_message,
+            al.status,
+            al.created_at,
+            al.updated_at
+        FROM attendance_leave al
+        INNER JOIN users u ON u.id = al.employee_id
+        WHERE
+            al.employee_id = $1
+            AND (
+                -- approved: return if today is within the leave range
+                (
+                    al.status = 'approved'
+                    AND (al.start_date AT TIME ZONE 'Asia/Kathmandu')::DATE <= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                    AND (al.end_date   AT TIME ZONE 'Asia/Kathmandu')::DATE >= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                )
+                OR
+                -- pending: return if today is within the leave range
+                (
+                    al.status = 'pending'
+                    AND (al.start_date AT TIME ZONE 'Asia/Kathmandu')::DATE <= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                    AND (al.end_date   AT TIME ZONE 'Asia/Kathmandu')::DATE >= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                )
+                OR
+                -- rejected: only return if BOTH updated today AND start_date is today
+                -- so next day they are free to request even if range was multi-day
+                (
+                    al.status = 'rejected'
+                    AND (al.updated_at  AT TIME ZONE 'Asia/Kathmandu')::DATE = (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                    AND (al.start_date  AT TIME ZONE 'Asia/Kathmandu')::DATE = (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                )
+            )
+        ORDER BY al.created_at DESC
+        LIMIT 1
+    `, empUUID).Scan(
 		&leave.ID,
 		&leave.EmployeeID,
 		&leave.EmployeeName,
@@ -135,51 +330,87 @@ func (r *attendanceRepo) GetTodayAttendanceLeave(c context.Context, empUUID uuid
 		log.Printf("error getting today's attendance leave: %v", err)
 		return nil, errors.New(errMessage)
 	}
-
 	return &leave, nil
 }
-func (r *attendanceRepo) GetAttendanceLeaveRequestByUserId(c context.Context, employeeId string, limit, page int, fromDate *time.Time, toDate *time.Time, status *models.LeaveStatus) (*AttendanceLeaveByUserResponse, error) {
-	errMessage := "failed to get attendance leave requests"
-	offset := page * limit
 
-	// Parse employeeId
-	empUUID, err := uuid.FromString(employeeId)
-	if err != nil {
-		return nil, fmt.Errorf("invalid employee id: %w", err)
+func (r *attendanceRepo) GetAttendanceLeaveRequestByUserId(c context.Context, empUUID uuid.UUID, limit, page int, fromDate, toDate *time.Time, status *models.LeaveStatus) (*AttendanceLeaveByUserResponse, error) {
+	const errMessage = "failed to get attendance leave requests"
+
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if page < 0 {
+		page = 0
 	}
 
-	// Check if employee exists
+	offset := page * limit
+
+	// ── Treat empty string status as nil ──────────────────────────────────
+	if status != nil && string(*status) == "" {
+		status = nil
+	}
+
+	// ── Check employee exists ─────────────────────────────────────────────
 	var exists bool
-	err = r.pool.QueryRow(c, `
+	err := r.pool.QueryRow(c, `
 		SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)
 	`, empUUID).Scan(&exists)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", errMessage, err)
+		return nil, fmt.Errorf("%s: failed to verify employee: %w", errMessage, err)
 	}
 	if !exists {
-		return nil, fmt.Errorf("employee not found")
+		return nil, fmt.Errorf("employee not found with ID: %s", empUUID.String())
 	}
 
-	// List query
-	rows, err := r.pool.Query(c, `
+	// ── List query ────────────────────────────────────────────────────────
+	query := `
 		SELECT
-			al.id, al.employee_id, u.name, u.email, u.image,
-			al.checked_by, al.start_date, al.end_date,
-			al.message, al.supervisor_message, al.status,
-			al.created_at, al.updated_at
+			al.id,
+			al.employee_id,
+			u.name,
+			u.email,
+			u.image,
+			al.checked_by,
+			al.start_date,
+			al.end_date,
+			al.message,
+			al.supervisor_message,
+			al.status,
+			al.created_at,
+			al.updated_at
 		FROM attendance_leave al
 		INNER JOIN users u ON u.id = al.employee_id
-		WHERE
-			al.employee_id = $1
-			AND ($2::timestamptz IS NULL OR al.created_at >= $2::timestamptz)
-			AND ($3::timestamptz IS NULL OR al.created_at <= $3::timestamptz)
-			AND ($6::leave_status IS NULL OR al.status = $6::leave_status)
-		ORDER BY al.created_at DESC
-		LIMIT $4 OFFSET $5
-	`, empUUID, fromDate, toDate, limit, offset, status)
+		WHERE al.employee_id = $1
+	`
+	args := []interface{}{empUUID}
+	argPos := 2
+
+	if fromDate != nil {
+		query += fmt.Sprintf(" AND al.created_at >= $%d::timestamptz", argPos)
+		args = append(args, *fromDate)
+		argPos++
+	}
+	if toDate != nil {
+		query += fmt.Sprintf(" AND al.created_at <= $%d::timestamptz", argPos)
+		args = append(args, *toDate)
+		argPos++
+	}
+	if status != nil {
+		query += fmt.Sprintf(" AND al.status = $%d::text::leave_status", argPos)
+		args = append(args, string(*status))
+		argPos++
+	}
+
+	query += fmt.Sprintf(" ORDER BY al.created_at DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
+	args = append(args, limit, offset)
+
+	rows, err := r.pool.Query(c, query, args...)
 	if err != nil {
-		log.Printf("error getting leave requests: %v", err)
-		return nil, errors.New(errMessage)
+		log.Printf("[ERROR] Failed to execute leave requests query: %v", err)
+		return nil, fmt.Errorf("%s: %w", errMessage, err)
 	}
 	defer rows.Close()
 
@@ -201,54 +432,86 @@ func (r *attendanceRepo) GetAttendanceLeaveRequestByUserId(c context.Context, em
 			&leave.CreatedAt,
 			&leave.UpdatedAt,
 		); err != nil {
-			return nil, fmt.Errorf("%s: %w", errMessage, err)
+			log.Printf("[ERROR] Failed to scan row: %v", err)
+			return nil, fmt.Errorf("%s: failed to scan row: %w", errMessage, err)
 		}
 		requests = append(requests, leave)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, errors.New(errMessage)
+		return nil, fmt.Errorf("%s: %w", errMessage, err)
 	}
 
-	// Count query
-	var total int
-	err = r.pool.QueryRow(c, `
+	// ── Count query ───────────────────────────────────────────────────────
+	countQuery := `
 		SELECT COUNT(*)
 		FROM attendance_leave
-		WHERE
-			employee_id = $1
-			AND ($2::timestamptz IS NULL OR created_at >= $2::timestamptz)
-			AND ($3::timestamptz IS NULL OR created_at <= $3::timestamptz)
-			AND ($4::leave_status IS NULL OR status = $4::leave_status)
-	`, empUUID, fromDate, toDate, status).Scan(&total)
-	if err != nil {
-		return nil, errors.New(errMessage)
+		WHERE employee_id = $1
+	`
+	countArgs := []interface{}{empUUID}
+	countArgPos := 2
+
+	if fromDate != nil {
+		countQuery += fmt.Sprintf(" AND created_at >= $%d::timestamptz", countArgPos)
+		countArgs = append(countArgs, *fromDate)
+		countArgPos++
+	}
+	if toDate != nil {
+		countQuery += fmt.Sprintf(" AND created_at <= $%d::timestamptz", countArgPos)
+		countArgs = append(countArgs, *toDate)
+		countArgPos++
+	}
+	if status != nil {
+		countQuery += fmt.Sprintf(" AND status = $%d::text::leave_status", countArgPos)
+		countArgs = append(countArgs, string(*status))
+		countArgPos++
 	}
 
-	// Stats query — always unfiltered by status so counts reflect all statuses
-	var stats AttendanceLeaveByUserStats
-	err = r.pool.QueryRow(c, `
+	var total int
+	err = r.pool.QueryRow(c, countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		return nil, fmt.Errorf("%s: failed to get total count: %w", errMessage, err)
+	}
+
+	// ── Stats query (date filtered, all statuses) ─────────────────────────
+	statsQuery := `
 		SELECT
 			COUNT(*)                                         AS total_requests,
 			COUNT(*) FILTER (WHERE status = 'pending')      AS pending_requests,
 			COUNT(*) FILTER (WHERE status = 'approved')     AS approved_requests,
 			COUNT(*) FILTER (WHERE status = 'rejected')     AS rejected_requests
 		FROM attendance_leave
-		WHERE
-			employee_id = $1
-			AND ($2::timestamptz IS NULL OR created_at >= $2::timestamptz)
-			AND ($3::timestamptz IS NULL OR created_at <= $3::timestamptz)
-	`, empUUID, fromDate, toDate).Scan(
+		WHERE employee_id = $1
+	`
+	statsArgs := []interface{}{empUUID}
+	statsArgPos := 2
+
+	if fromDate != nil {
+		statsQuery += fmt.Sprintf(" AND created_at >= $%d::timestamptz", statsArgPos)
+		statsArgs = append(statsArgs, *fromDate)
+		statsArgPos++
+	}
+	if toDate != nil {
+		statsQuery += fmt.Sprintf(" AND created_at <= $%d::timestamptz", statsArgPos)
+		statsArgs = append(statsArgs, *toDate)
+		statsArgPos++
+	}
+
+	var stats AttendanceLeaveByUserStats
+	err = r.pool.QueryRow(c, statsQuery, statsArgs...).Scan(
 		&stats.TotalRequests,
 		&stats.PendingRequests,
 		&stats.ApprovedRequests,
 		&stats.RejectedRequests,
 	)
 	if err != nil {
-		return nil, errors.New(errMessage)
+		return nil, fmt.Errorf("%s: failed to get stats: %w", errMessage, err)
 	}
 
-	hasMore := (page+1)*limit < total
+	hasMore := offset+limit < total
 	nextOffset := page + 1
+	if !hasMore {
+		nextOffset = -1
+	}
 
 	return &AttendanceLeaveByUserResponse{
 		Requests:   requests,
@@ -258,7 +521,6 @@ func (r *attendanceRepo) GetAttendanceLeaveRequestByUserId(c context.Context, em
 		Stats:      &stats,
 	}, nil
 }
-
 func (r *attendanceRepo) GetAttendanceRequest(c context.Context) ([]models.AttendanceLeaveResponse, error) {
 	var responses []models.AttendanceLeaveResponse
 
@@ -328,37 +590,128 @@ func (r *attendanceRepo) GetAttendanceRequest(c context.Context) ([]models.Atten
 	return responses, nil
 }
 
-func (r *attendanceRepo) CancelLeaveRequestByAdmin(c context.Context, leaveId *uuid.UUID) (*models.AttendanceLeaveResponse, error) {
+func (r *attendanceRepo) AcceptLeaveRequestByAdmin(c context.Context, id uuid.UUID, checkedBy uuid.UUID) (*models.AttendanceLeaveResponse, error) {
+	// ── Begin transaction ──
+	tx, err := r.pool.Begin(c)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(c) // no-op if already committed
+
+	// ── Step 1: Accept the leave request ──
+	acceptQuery := `
+        UPDATE attendance_leave al
+        SET
+            status     = 'approved',
+            checked_by = $2,
+            updated_at = NOW()
+        FROM users u
+        WHERE al.id     = $1
+          AND al.status = 'pending'
+          AND u.id      = al.employee_id
+        RETURNING
+            al.id,
+            al.employee_id,
+            u.name  AS employee_name,
+            u.email AS employee_email,
+            u.image AS employee_image,
+            al.checked_by,
+            al.start_date,
+            al.end_date,
+            al.message,
+            al.supervisor_message,
+            al.status,
+            al.created_at,
+            al.updated_at
+    `
+	var res models.AttendanceLeaveResponse
+	err = tx.QueryRow(c, acceptQuery, id, checkedBy).Scan(
+		&res.ID,
+		&res.EmployeeID,
+		&res.EmployeeName,
+		&res.EmployeeEmail,
+		&res.EmployeeImage,
+		&res.CheckedBy,
+		&res.StartDate,
+		&res.EndDate,
+		&res.Message,
+		&res.SupervisorMessage,
+		&res.Status,
+		&res.CreatedAt,
+		&res.UpdatedAt,
+	)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, fmt.Errorf("leave request not found or already processed")
+		}
+		return nil, fmt.Errorf("failed to accept leave request: %w", err)
+	}
+
+	// ── Step 2: Create attendance records for each day in the leave range ──
+	// Normalize to date only (strip time component)
+	startDate := res.StartDate.UTC().Truncate(24 * time.Hour)
+	endDate := res.EndDate.UTC().Truncate(24 * time.Hour)
+
+	attendanceQuery := `
+        INSERT INTO attendance (
+            employee_id,
+            work_date,
+            status,
+            created_at,
+            updated_at
+        ) VALUES ($1, $2, 'leave', NOW(), NOW())
+        ON CONFLICT (employee_id, work_date)
+            DO UPDATE SET
+                status     = 'leave',
+                updated_at = NOW()
+    `
+
+	for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
+		_, err = tx.Exec(c, attendanceQuery, res.EmployeeID, d)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create attendance record for %s: %w", d.Format("2006-01-02"), err)
+		}
+	}
+
+	// ── Step 3: Commit ──
+	if err = tx.Commit(c); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return &res, nil
+}
+
+func (r *attendanceRepo) CancelLeaveRequestByAdmin(c context.Context, leaveId *uuid.UUID, checkedBy uuid.UUID) (*models.AttendanceLeaveResponse, error) {
 	if leaveId == nil {
 		return nil, fmt.Errorf("leave ID is required")
 	}
-
 	query := `
-		UPDATE attendance_leave al
-		SET
-			status     = 'rejected',
-			updated_at = NOW()
-		WHERE al.id     = $1
-		  AND al.status = 'pending'
-		RETURNING
-			al.id,
-			al.employee_id,
-			u.name  AS employee_name,
-			u.email AS employee_email,
-			u.image AS employee_image,
-			al.checked_by,
-			al.start_date,
-			al.end_date,
-			al.message,
-			al.supervisor_message,
-			al.status,
-			al.created_at,
-			al.updated_at
-	`
-
+        UPDATE attendance_leave al
+        SET
+            status     = 'rejected',
+            checked_by = $2,
+            updated_at = NOW()
+        FROM users u
+        WHERE al.id     = $1
+          AND al.status = 'pending'
+          AND u.id      = al.employee_id
+        RETURNING
+            al.id,
+            al.employee_id,
+            u.name  AS employee_name,
+            u.email AS employee_email,
+            u.image AS employee_image,
+            al.checked_by,
+            al.start_date,
+            al.end_date,
+            al.message,
+            al.supervisor_message,
+            al.status,
+            al.created_at,
+            al.updated_at
+    `
 	var res models.AttendanceLeaveResponse
-
-	err := r.pool.QueryRow(c, query, leaveId).Scan(
+	err := r.pool.QueryRow(c, query, leaveId, checkedBy).Scan(
 		&res.ID,
 		&res.EmployeeID,
 		&res.EmployeeName,
@@ -379,7 +732,6 @@ func (r *attendanceRepo) CancelLeaveRequestByAdmin(c context.Context, leaveId *u
 		}
 		return nil, fmt.Errorf("failed to cancel leave request: %w", err)
 	}
-
 	return &res, nil
 }
 func (r *attendanceRepo) CancelLeaveRequest(c context.Context, leaveId *uuid.UUID, requesterId *uuid.UUID) error {
@@ -907,42 +1259,64 @@ func (r *attendanceRepo) CreateEmployeeRequest(c context.Context, req *models.Cr
 	}
 	defer tx.Rollback(c)
 
-	// Check if employee already submitted a leave request today (Kathmandu time)
-	var alreadyRequested bool
+	// ── Block check ──────────────────────────────────────────────────────────
+	var blockReason string
 	err = tx.QueryRow(c, `
-		SELECT EXISTS(
-			SELECT 1 FROM attendance_leave
-			WHERE employee_id = $1
-			  AND (created_at AT TIME ZONE 'Asia/Kathmandu')::DATE = (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
-		)
-	`, req.EmployeeID).Scan(&alreadyRequested)
-	if err != nil {
+        SELECT
+            CASE
+                -- pending + today in range → already has active pending request
+                WHEN al.status = 'pending'
+                     AND (al.start_date AT TIME ZONE 'Asia/Kathmandu')::DATE <= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                     AND (al.end_date   AT TIME ZONE 'Asia/Kathmandu')::DATE >= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                THEN 'you already have a pending leave request for today'
+
+                -- approved + today in range → active leave, cannot request
+                WHEN al.status = 'approved'
+                     AND (al.start_date AT TIME ZONE 'Asia/Kathmandu')::DATE <= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                     AND (al.end_date   AT TIME ZONE 'Asia/Kathmandu')::DATE >= (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                THEN 'you have an approved leave active until ' || (al.end_date AT TIME ZONE 'Asia/Kathmandu')::DATE::TEXT
+
+                -- rejected + updated today + start_date was today → blocked same day
+                -- if start_date was tomorrow or beyond, allow (falls into ELSE)
+                WHEN al.status = 'rejected'
+                     AND (al.updated_at  AT TIME ZONE 'Asia/Kathmandu')::DATE = (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                     AND (al.start_date  AT TIME ZONE 'Asia/Kathmandu')::DATE = (NOW() AT TIME ZONE 'Asia/Kathmandu')::DATE
+                THEN 'your leave request was rejected today, you can request again tomorrow'
+
+                ELSE ''
+            END
+        FROM attendance_leave al
+        WHERE al.employee_id = $1
+        ORDER BY al.created_at DESC
+        LIMIT 1
+    `, req.EmployeeID).Scan(&blockReason)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("failed to check existing leave request: %w", err)
 	}
-	if alreadyRequested {
-		return fmt.Errorf("you have already submitted a leave request today")
+	if blockReason != "" {
+		return errors.New(blockReason)
 	}
 
-	// Insert — store dates normalized to Asia/Kathmandu timezone
+	// ── Insert ───────────────────────────────────────────────────────────────
 	_, err = tx.Exec(c, `
-		INSERT INTO attendance_leave (
-			employee_id,
-			start_date,
-			end_date,
-			message,
-			status,
-			created_at,
-			updated_at
-		) VALUES (
-			$1,
-			$2::TIMESTAMPTZ AT TIME ZONE 'Asia/Kathmandu',
-			$3::TIMESTAMPTZ AT TIME ZONE 'Asia/Kathmandu',
-			$4,
-			$5,
-			NOW(),
-			NOW()
-		)
-	`,
+        INSERT INTO attendance_leave (
+            employee_id,
+            start_date,
+            end_date,
+            message,
+            status,
+            created_at,
+            updated_at
+        ) VALUES (
+            $1,
+            $2::TIMESTAMPTZ AT TIME ZONE 'Asia/Kathmandu',
+            $3::TIMESTAMPTZ AT TIME ZONE 'Asia/Kathmandu',
+            $4,
+            $5,
+            NOW(),
+            NOW()
+        )
+    `,
 		req.EmployeeID,
 		req.StartDate,
 		req.EndDate,
@@ -959,7 +1333,6 @@ func (r *attendanceRepo) CreateEmployeeRequest(c context.Context, req *models.Cr
 	if err = tx.Commit(c); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
-
 	return nil
 }
 

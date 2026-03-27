@@ -102,6 +102,14 @@ type AttendanceHistoryResponse struct {
 	Stats    *AttendanceHistoryStats `json:"stats,omitempty"`
 }
 
+type AttendanceLeaveHistory struct {
+	FromDate *time.Time  `json:"fromDate"`
+	ToDate   *time.Time  `json:"toDate"`
+	Limit    int         `json:"limit"`
+	Page     int         `json:"page"`
+	Status   LeaveStatus `json:"status"`
+}
+
 type AttendanceHistoryQuery struct {
 	EmployeeId *uuid.UUID `json:"employee_id"`
 	FromDate   *time.Time `json:"fromDate"`

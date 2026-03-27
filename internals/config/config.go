@@ -17,6 +17,8 @@ type Config struct {
 	AdminPhone    string
 	SMTPEmail     string
 	SMTPPassword  string
+	SMTPHost      string
+	SMTPPort      string
 }
 
 var AppConfig *Config
@@ -36,6 +38,8 @@ func InitConfig() error {
 		AdminPhone:    os.Getenv("ADMIN_PHONE"),
 		SMTPEmail:     os.Getenv("SMTP_EMAIL"),
 		SMTPPassword:  os.Getenv("SMTP_PASSWORD"),
+		SMTPHost:      os.Getenv("SMTP_HOST"),
+		SMTPPort:      os.Getenv("SMTP_PORT"),
 	}
 
 	return nil

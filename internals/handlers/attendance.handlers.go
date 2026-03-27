@@ -24,6 +24,260 @@ const (
 	AttendanceError   AttendanceStatus = "attendance_error"
 )
 
+func (h *AttendanceHandler) GetAllAttendanceLeaveRequestsHistoryHandler(c *gin.Context) {
+	var fromDate *time.Time
+	if fromDateStr := c.Query("startingDate"); fromDateStr != "" {
+		parsedDate, err := time.Parse("2006-01-02", fromDateStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Invalid fromDate format. Use YYYY-MM-DD",
+				"success": false,
+			})
+			return
+		}
+		fromDate = &parsedDate
+	}
+
+	var leaveStatus *models.LeaveStatus
+	leaveStatusString := c.Query("status")
+	if leaveStatusString != "" {
+		leaveStatus = (*models.LeaveStatus)(&leaveStatusString)
+	}
+
+	// Parse toDate (optional)
+	var toDate *time.Time
+	if toDateStr := c.Query("endingDate"); toDateStr != "" {
+		parsedDate, err := time.Parse("2006-01-02", toDateStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Invalid toDate format. Use YYYY-MM-DD",
+				"success": false,
+			})
+			return
+		}
+		toDate = &parsedDate
+	}
+
+	// Parse limit (default to 10)
+	limit := 10
+	if limitStr := c.Query("limit"); limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err != nil || parsedLimit <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Invalid limit parameter",
+				"success": false,
+			})
+			return
+		}
+		limit = parsedLimit
+	}
+
+	// Parse page (default to 0)
+	page := 0
+	if pageStr := c.Query("page"); pageStr != "" {
+		parsedPage, err := strconv.Atoi(pageStr)
+		if err != nil || parsedPage < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Invalid page parameter",
+				"success": false,
+			})
+			return
+		}
+		page = parsedPage
+	}
+
+	// Validate date range if both are provided
+	if fromDate != nil && toDate != nil && toDate.Before(*fromDate) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "toDate cannot be before fromDate",
+			"success": false,
+		})
+		return
+	}
+
+	query := &models.AttendanceLeaveHistory{
+		FromDate: fromDate,
+		ToDate:   toDate,
+		Limit:    limit,
+		Page:     page,
+		Status:   *leaveStatus,
+	}
+
+	res, err := h.attendanceService.GetAllAttendanceRequestLeaveHistoryService(c, query)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "failed to get attendance",
+			"success": false,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"attendance_leaves": res,
+		"success":           true,
+	})
+
+}
+
+func (h *AttendanceHandler) GetAllAttendanceLeaveRequestsByUserId(c *gin.Context) {
+	var fromDate *time.Time
+	if fromDateStr := c.Query("startingDate"); fromDateStr != "" {
+		parsedDate, err := time.Parse("2006-01-02", fromDateStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Invalid fromDate format. Use YYYY-MM-DD",
+				"success": false,
+			})
+			return
+		}
+		fromDate = &parsedDate
+	}
+
+	var leaveStatus models.LeaveStatus
+	leaveStatusString := c.Query("status")
+	if leaveStatusString != "" {
+		leaveStatus = (models.LeaveStatus)(leaveStatusString)
+	}
+
+	// Parse toDate (optional)
+	var toDate *time.Time
+	if toDateStr := c.Query("endingDate"); toDateStr != "" {
+		parsedDate, err := time.Parse("2006-01-02", toDateStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Invalid toDate format. Use YYYY-MM-DD",
+				"success": false,
+			})
+			return
+		}
+		toDate = &parsedDate
+	}
+
+	// Parse limit (default to 10)
+	limit := 10
+	if limitStr := c.Query("limit"); limitStr != "" {
+		parsedLimit, err := strconv.Atoi(limitStr)
+		if err != nil || parsedLimit <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Invalid limit parameter",
+				"success": false,
+			})
+			return
+		}
+		limit = parsedLimit
+	}
+
+	// Parse page (default to 0)
+	page := 0
+	if pageStr := c.Query("page"); pageStr != "" {
+		parsedPage, err := strconv.Atoi(pageStr)
+		if err != nil || parsedPage < 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Invalid page parameter",
+				"success": false,
+			})
+			return
+		}
+		page = parsedPage
+	}
+
+	// Validate date range if both are provided
+	if fromDate != nil && toDate != nil && toDate.Before(*fromDate) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "toDate cannot be before fromDate",
+			"success": false,
+		})
+		return
+	}
+
+	query := &models.AttendanceLeaveHistory{
+		FromDate: fromDate,
+		ToDate:   toDate,
+		Limit:    limit,
+		Page:     page,
+		Status:   leaveStatus,
+	}
+
+	fmt.Println("thisis hte queyr : ", query)
+
+	res, err := h.attendanceService.GetAllAttendanceRequestLeaveByUserIdService(c, query)
+	fmt.Println("thisis hte attndance histoyr : ", res, err)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "failed to get attendance",
+			"success": false,
+		})
+		return
+	}
+
+	fmt.Println("thisis the attenance leaves data : ", res)
+
+	c.JSON(http.StatusOK, gin.H{
+		"attendance_leaves": res,
+		"success":           true,
+	})
+
+}
+
+func (h *AttendanceHandler) CancelLeaveAttendanceByAdminHandler(c *gin.Context) {
+
+	leaveIDStr := c.Param("id")
+	leaveID, err := uuid.FromString(leaveIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid leave id", "success": false})
+		return
+	}
+
+	if err := h.attendanceService.CancelLeaveAttendanceByAdmin(c, &leaveID); err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "leave request accepted successfully",
+		"success": true,
+	})
+
+}
+
+func (h *AttendanceHandler) AcceptLeaveAttendanceByAdminHandler(c *gin.Context) {
+
+	leaveIDStr := c.Param("id")
+	leaveID, err := uuid.FromString(leaveIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid leave id", "success": false})
+		return
+	}
+
+	if err := h.attendanceService.AcceptLeaveAttendanceByAdmin(c, &leaveID); err != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "leave request accepted successfully",
+		"success": true,
+	})
+
+}
+
+func (h *AttendanceHandler) GetAllAttendanceLeaveRequestHandler(c *gin.Context) {
+	attendance, err := h.attendanceService.GetAllAttendanceRequestLeaveService(c)
+	if err != nil {
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":          true,
+		"attendance_leave": attendance,
+	})
+}
+
 func (h *AttendanceHandler) UpdateUserLeaveRequest(c *gin.Context) {
 	var req models.UserUpdateAttendanceLeave
 
