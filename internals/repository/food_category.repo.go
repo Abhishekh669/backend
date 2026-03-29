@@ -310,13 +310,15 @@ func (r *foodCategoryRepo) NewUpdateCategory(ctx context.Context, category *mode
 		SET
 			name = $1,
 			slug = $2,
+			is_active = $3,
 			updated_at = NOW()
-		WHERE id = $3
+		WHERE id = $4
 	`
 
 	res, err := r.pool.Exec(ctx, query,
 		name,
 		slug,
+		category.IsActive,
 		category.ID,
 	)
 	if err != nil {

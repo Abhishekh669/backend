@@ -158,6 +158,16 @@ func (r *orderRepo) DeleteTablesSessionById(ctx context.Context, tableSessionId 
 		return err
 	}
 
+	// Update table_status to empty
+	_, err = tx.Exec(ctx, `
+        UPDATE table_status
+        SET status = 'empty'
+        WHERE table_number = $1
+    `, tableNumber)
+	if err != nil {
+		return err
+	}
+
 	return tx.Commit(ctx)
 }
 
