@@ -131,3 +131,25 @@ type UpdateOrderItem struct {
 	OrderItemId string      `json:"order_item_id"`
 	OrderId     string      `json:"order_id"`
 }
+
+type AllOrderStatusForCashier struct {
+	OrderId       uuid.UUID   `json:"order_id"`
+	Status        OrderStatus `json:"status"`
+	TableNumber   int         `json:"table_number"`
+	CustomerName  *string     `json:"customer_name"`
+	CustomerPhone *string     `json:"customer_phone"`
+	CreatedAt     time.Time   `json:"created_at"`
+}
+
+type GetOrderDetailsForCashier struct {
+	OrderMenuItems []OrderItemType `json:"order_menu_items"`
+	OrderId        uuid.UUID       `json:"order_id"`
+	Status         OrderStatus     `json:"status"`
+	TableNumber    int             `json:"table_number"`
+	CustomerName   *string         `json:"customer_name"`
+	CustomerPhone  *string         `json:"customer_phone"`
+	WaiterId       uuid.UUID       `json:"waiter_id"`
+	WaiterName     string          `json:"waiter_name"`
+	WaiterImage    *string         `json:"waiter_image"`
+	CreatedAt      time.Time       `json:"created_at"`
+}

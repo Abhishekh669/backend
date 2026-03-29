@@ -33,6 +33,10 @@ type App struct {
 	OrderRepo    repository.OrderRepo
 	OrderService services.OrderService
 	Orderhandler handlers.OrderHandler
+
+	PaymentRepo    repository.PaymentRepo
+	PaymentService services.PaymentService
+	PaymentHandler handlers.PaymentHandler
 }
 
 func New() (*App, error) {
@@ -67,6 +71,10 @@ func New() (*App, error) {
 	orderService := services.NewOrderService(orderRepo)
 	orderHandler := handlers.NewOrderHandler(orderService)
 
+	paymentRepo := repository.NewPaymentRepository()
+	paymentService := services.NewPaymentService(paymentRepo)
+	paymentHandler := handlers.NewPaymentHandler(paymentService)
+
 	return &App{
 		UserRepo:    userRepo,
 		UserService: userService,
@@ -91,5 +99,9 @@ func New() (*App, error) {
 		OrderRepo:    orderRepo,
 		OrderService: orderService,
 		Orderhandler: *orderHandler,
+
+		PaymentRepo:    paymentRepo,
+		PaymentService: paymentService,
+		PaymentHandler: *paymentHandler,
 	}, nil
 }

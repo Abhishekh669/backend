@@ -307,6 +307,78 @@ WHERE close_time IS NULL;
       ON order_items(menu_item_id);
   `,
 	},
+	{
+		Name: "payments",
+		Schema: `
+	-- ENUM for payment method
+	DO $$ BEGIN
+		CREATE TYPE payment_method_enum AS ENUM ('cash', 'online');
+	EXCEPTION
+		WHEN duplicate_object THEN NULL;
+	END $$;
+
+	-- ENUM for online gateways
+	DO $$ BEGIN
+		CREATE TYPE online_gateway_enum AS ENUM ('esewa', 'khalti', 'fonepay', 'banking', 'other');
+	EXCEPTION
+		WHEN duplicate_object THEN NULL;
+	END $$;
+
+	CREATE TABLE IF NOT EXISTS payments (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+
+		payment_method payment_method_enum NOT NULL,
+		online_gateway online_gateway_enum,
+
+		paid_amount NUMERIC(10,2) NOT NULL CHECK (paid_amount >= 0),
+		discount NUMERIC(10,2) DEFAULT 0 CHECK (discount >= 0),
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+		-- ✅ Business rule enforcement
+		CONSTRAINT chk_online_gateway_required
+		CHECK (
+			(payment_method = 'online' AND online_gateway IS NOT NULL)
+			OR
+			(payment_method = 'cash' AND online_gateway IS NULL)
+		)
+	);
+
+	-- Indexes for performance
+	CREATE INDEX IF NOT EXISTS idx_payments_order_id 
+	ON payments(order_id);
+
+	CREATE INDEX IF NOT EXISTS idx_payments_created_at 
+	ON payments(created_at);
+
+	CREATE INDEX IF NOT EXISTS idx_payments_method 
+	ON payments(payment_method);
+	`,
+	}, {
+		Name: "user_tokens",
+		Schema: `
+	CREATE TABLE IF NOT EXISTS user_tokens (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+		phone_number VARCHAR(20) NOT NULL UNIQUE,
+
+		total_tokens NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (total_tokens >= 0),
+
+		created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+
+	-- Index for fast lookup
+	CREATE INDEX IF NOT EXISTS idx_user_tokens_phone 
+	ON user_tokens(phone_number);
+
+	CREATE INDEX IF NOT EXISTS idx_user_tokens_created_at 
+	ON user_tokens(created_at);
+	`,
+	},
 }
 
 func CreatePostgresTables(ctx context.Context, postgresPool *pgxpool.Pool) error {

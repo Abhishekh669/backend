@@ -14,4 +14,5 @@ func SetUpRoutes(app *gin.Engine, appConfig *app.App, newCache *algorithm.MenuCa
 	AttendanceServiceRouter(apiGroup, appConfig)
 	TableRouter(apiGroup, appConfig)
 	OrderServiceRouter(apiGroup, appConfig)
+	PaymentRouter(apiGroup, appConfig)
 }

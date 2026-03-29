@@ -18,7 +18,7 @@ type OrderHandler struct {
 
 func (h *OrderHandler) GetAllApprovalRequestHandler(c *gin.Context) {
 	requests, err := h.orderService.GetAllApprovalRequestService(c)
-
+	fmt.Println("this is reror in get all approverd orders : ", requests, err)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,

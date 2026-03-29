@@ -46,6 +46,10 @@ type orderRepo struct {
 	pool *pgxpool.Pool
 }
 
+func (r *orderRepo) GetAllOrdersForCashier(ctx context.Context) {
+
+}
+
 func (r *orderRepo) GetAllOrderApprovalRequest(ctx context.Context) ([]models.TableValidation, error) {
 	query := `
     SELECT

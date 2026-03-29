@@ -6,6 +6,14 @@ type Permission string
 
 // User Management
 const (
+
+	//payments
+	ViewPayments   Permission = "view:payments"
+	CreatePayments Permission = "create:payments"
+	UpdatePayments Permission = "update:payments"
+	DeletePayments Permission = "delete:payments"
+
+	//users
 	ViewUsers      Permission = "view:users"
 	CreateUsers    Permission = "create:users"
 	UpdateUsers    Permission = "update:users"
@@ -97,6 +105,12 @@ var RolePermissions = map[models.Role][]Permission{
 		UpdateOrder,
 		DeleteOrder,
 		ViewOrder,
+
+		//payment management
+		ViewPayments,
+		CreatePayments,
+		UpdatePayments,
+		DeletePayments,
 	},
 
 	models.RoleCashier: {
@@ -106,6 +120,16 @@ var RolePermissions = map[models.Role][]Permission{
 		UpdateTable,
 
 		// ❌ no user management
+		ViewOrder,
+		CreateOrder,
+		UpdateOrder,
+		DeleteOrder,
+
+		//payment management
+		ViewPayments,
+		CreatePayments,
+		UpdatePayments,
+		DeletePayments,
 	},
 
 	models.RoleChef: {
@@ -135,6 +159,12 @@ var RolePermissions = map[models.Role][]Permission{
 		UpdateOrder,
 		DeleteOrder,
 		ViewOrder,
+
+		//payment management
+		ViewPayments,
+		CreatePayments,
+		UpdatePayments,
+		DeletePayments,
 	},
 
 	models.RoleCustomer: {
