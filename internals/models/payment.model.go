@@ -62,3 +62,16 @@ type UserToken struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
+
+type PaymentDetailsForCashierWithDiscount struct {
+	Token          *UserToken      `json:"token"`
+	OrderMenuItems []OrderItemType `json:"order_menu_items"`
+	OrderId        uuid.UUID       `json:"order_id"`
+	Status         OrderStatus     `json:"status"`
+	TableNumber    int             `json:"table_number"`
+	CustomerName   *string         `json:"customer_name"`
+	CustomerPhone  *string         `json:"customer_phone"`
+	WaiterId       uuid.UUID       `json:"waiter_id"`
+	WaiterName     string          `json:"waiter_name"`
+	WaiterImage    *string         `json:"waiter_image"`
+}

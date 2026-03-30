@@ -12,11 +12,170 @@ import (
 )
 
 type PaymentRepo interface {
+	GetAllOrderDetailsForCashierByOrderId(ctx context.Context, orderId uuid.UUID) (*models.PaymentDetailsForCashierWithDiscount, error)
 	GetAllApprovedOrdersForCashier(ctx context.Context) ([]models.GetOrderDetailsForCashier, error)
 	CreatePayment(ctx context.Context, paymentData *models.CreatePayment) (*models.Payment, error)
 }
 type paymentRepo struct {
 	pool *pgxpool.Pool
+}
+
+func (r *paymentRepo) GetAllOrderDetailsForCashierByOrderId(ctx context.Context, orderId uuid.UUID) (*models.PaymentDetailsForCashierWithDiscount, error) {
+	query := `
+        SELECT
+            o.id              AS order_id,
+            o.status,
+            o.customer_name,
+            o.customer_phone,
+            o.waiter_id,
+            ts.table_number,
+
+            -- waiter info from users table
+            u.name            AS waiter_name,
+            u.image           AS waiter_image,
+
+            -- order items
+            oi.id             AS item_id,
+            oi.price          AS item_price,
+            oi.quantity       AS item_quantity,
+            oi.status         AS item_status,
+            oi.created_at     AS item_created_at,
+            oi.menu_item_id,
+
+            -- menu info
+            mi.name           AS menu_name,
+            mi.image_url      AS menu_image,
+
+            -- token info (nullable)
+            ut.id             AS token_id,
+            ut.phone_number   AS token_phone,
+            ut.total_tokens,
+            ut.created_at     AS token_created_at,
+            ut.updated_at     AS token_updated_at
+
+        FROM orders o
+        JOIN table_session ts  ON ts.id = o.table_session_id
+        LEFT JOIN users u      ON u.id  = o.waiter_id
+        JOIN order_items oi    ON oi.order_id = o.id
+        JOIN menu_items mi     ON mi.id = oi.menu_item_id
+        LEFT JOIN user_tokens ut ON ut.phone_number = o.customer_phone
+
+        WHERE o.id = $1
+    `
+
+	rows, err := r.pool.Query(ctx, query, orderId)
+	if err != nil {
+		return nil, fmt.Errorf("GetAllOrderDetailsForCashierByOrderId query: %w", err)
+	}
+	defer rows.Close()
+
+	var result *models.PaymentDetailsForCashierWithDiscount
+
+	for rows.Next() {
+		var (
+			// order-level (same on every row)
+			oID           uuid.UUID
+			oStatus       models.OrderStatus
+			customerName  *string
+			customerPhone *string
+			tableNumber   int
+
+			// waiter (all nullable due to LEFT JOIN)
+			waiterID    *uuid.UUID
+			waiterName  *string
+			waiterImage *string
+
+			// order item
+			itemID        uuid.UUID
+			itemPrice     float64
+			itemQty       float64
+			itemStatus    models.OrderStatus
+			itemCreatedAt time.Time
+			menuItemID    uuid.UUID
+			menuName      string
+			menuImage     *string
+
+			// token (all nullable)
+			tokenID        *uuid.UUID
+			tokenPhone     *string
+			totalTokens    *float64
+			tokenCreatedAt *time.Time
+			tokenUpdatedAt *time.Time
+		)
+
+		if err := rows.Scan(
+			&oID, &oStatus, &customerName, &customerPhone, &waiterID, &tableNumber,
+			&waiterName, &waiterImage,
+			&itemID, &itemPrice, &itemQty, &itemStatus, &itemCreatedAt, &menuItemID,
+			&menuName, &menuImage,
+			&tokenID, &tokenPhone, &totalTokens, &tokenCreatedAt, &tokenUpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("GetAllOrderDetailsForCashierByOrderId scan: %w", err)
+		}
+
+		// resolve waiter fields with dummy fallbacks
+		resolvedWaiterID := uuid.Nil
+		if waiterID != nil {
+			resolvedWaiterID = *waiterID
+		}
+
+		resolvedWaiterName := "N/A"
+		if waiterName != nil {
+			resolvedWaiterName = *waiterName
+		}
+
+		var resolvedWaiterImage *string
+		if waiterImage != nil {
+			resolvedWaiterImage = waiterImage
+		}
+
+		// initialise the result struct once using the first row
+		if result == nil {
+			result = &models.PaymentDetailsForCashierWithDiscount{
+				OrderId:       oID,
+				Status:        oStatus,
+				TableNumber:   tableNumber,
+				CustomerName:  customerName,
+				CustomerPhone: customerPhone,
+				WaiterId:      resolvedWaiterID,
+				WaiterName:    resolvedWaiterName,
+				WaiterImage:   resolvedWaiterImage,
+			}
+
+			// attach token only when a matching row exists
+			if tokenID != nil {
+				result.Token = &models.UserToken{
+					ID:          *tokenID,
+					PhoneNumber: *tokenPhone,
+					TotalTokens: *totalTokens,
+					CreatedAt:   *tokenCreatedAt,
+					UpdatedAt:   *tokenUpdatedAt,
+				}
+			}
+		}
+
+		result.OrderMenuItems = append(result.OrderMenuItems, models.OrderItemType{
+			Id:        itemID,
+			Price:     itemPrice,
+			Quantity:  itemQty,
+			OrderId:   oID,
+			MenuId:    menuItemID,
+			MenuImage: menuImage,
+			Status:    itemStatus,
+			MenuName:  menuName,
+			CreatedAt: itemCreatedAt,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("GetAllOrderDetailsForCashierByOrderId rows: %w", err)
+	}
+
+	if result == nil {
+		return nil, fmt.Errorf("order not found: %s", orderId)
+	}
+
+	return result, nil
 }
 
 func (r *paymentRepo) GetAllApprovedOrdersForCashier(ctx context.Context) ([]models.GetOrderDetailsForCashier, error) {
@@ -169,6 +328,7 @@ func (r *paymentRepo) GetAllApprovedOrdersForCashier(ctx context.Context) ([]mod
 	return result, nil
 }
 
+// TODO: implement the deleting the expiry token with in 30 days
 func (r *paymentRepo) CreatePayment(ctx context.Context, paymentData *models.CreatePayment) (*models.Payment, error) {
 
 	if paymentData == nil {
@@ -316,6 +476,7 @@ func (r *paymentRepo) CreatePayment(ctx context.Context, paymentData *models.Cre
 
 	return &payment, nil
 }
+
 func NewPaymentRepository() PaymentRepo {
 	pool, err := database.GetPostgresPool()
 	if err != nil {

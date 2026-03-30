@@ -8,17 +8,29 @@ import (
 	"github.com/Abhishekh669/backend/internals/rbac"
 	"github.com/Abhishekh669/backend/internals/repository"
 	"github.com/gin-gonic/gin"
+	"github.com/gofrs/uuid"
 )
 
 // PaymentService defines all payment-related operations
 type PaymentService interface {
 	// CreatePaymentSer
+
+	GetAllOrderDetailsForCAshierByOrderId(c *gin.Context, orderId uuid.UUID) (*models.PaymentDetailsForCashierWithDiscount, error)
 	GetAllApprovedOrdersForCashierService(c *gin.Context) ([]models.GetOrderDetailsForCashier, error)
 	CreatePaymentService(c *gin.Context, req *models.CreatePayment) (*models.Payment, error)
 }
 
 type paymentService struct {
 	repo repository.PaymentRepo
+}
+
+func (s *paymentService) GetAllOrderDetailsForCAshierByOrderId(c *gin.Context, orderId uuid.UUID) (*models.PaymentDetailsForCashierWithDiscount, error) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewPayments)
+	if err != nil {
+		return nil, errors.New("user not authorized")
+	}
+
+	return s.repo.GetAllOrderDetailsForCashierByOrderId(c.Request.Context(), orderId)
 }
 
 func (s *paymentService) GetAllApprovedOrdersForCashierService(c *gin.Context) ([]models.GetOrderDetailsForCashier, error) {

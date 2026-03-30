@@ -7,10 +7,28 @@ import (
 	"github.com/Abhishekh669/backend/internals/models"
 	"github.com/Abhishekh669/backend/internals/services"
 	"github.com/gin-gonic/gin"
+	"github.com/gofrs/uuid"
 )
 
 type PaymentHandler struct {
 	paymentService services.PaymentService
+}
+
+func (h *PaymentHandler) GetAllOrderDetailsForCashierByOrderIdHandler(c *gin.Context) {
+	orderIdStr := c.Param("orderId")
+	orderId, err := uuid.FromString(orderIdStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid order ID", "success": false})
+		return
+	}
+
+	details, err := h.paymentService.GetAllOrderDetailsForCAshierByOrderId(c, orderId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch order details", "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"order": details, "success": true})
 }
 
 func (h *PaymentHandler) GetAllApprovedOrdersForCashierHandler(c *gin.Context) {

@@ -80,7 +80,7 @@ func (h *FoodCategoryHandler) UpdateMenuItemHandler(newCache *algorithm.MenuCach
 			return
 		}
 
-		go newCache.ReloadFromDB()
+		newCache.ReloadFromDB()
 
 		c.JSON(http.StatusOK, gin.H{
 			"message": "menu item updated successfully",
@@ -104,7 +104,7 @@ func (h *FoodCategoryHandler) UpdateCategoryHandler(newCache *algorithm.MenuCach
 			return
 		}
 
-		go newCache.ReloadFromDB()
+		newCache.ReloadFromDB()
 
 		c.JSON(http.StatusOK, gin.H{
 			"message": "category updated successfully",
@@ -138,7 +138,7 @@ func (h *FoodCategoryHandler) DeleteMenuItemsHandler(newCache *algorithm.MenuCac
 		} else {
 			message = "menu item deleted successfully"
 		}
-		go newCache.ReloadFromDB()
+		newCache.ReloadFromDB()
 		c.JSON(http.StatusOK, gin.H{"message": message, "success": true})
 
 	}
@@ -168,7 +168,7 @@ func (h *FoodCategoryHandler) DeleteCategoriesHandler(newCache *algorithm.MenuCa
 		} else {
 			message = "category deleted successfully"
 		}
-		go newCache.ReloadFromDB()
+		newCache.ReloadFromDB()
 		c.JSON(http.StatusOK, gin.H{"message": message, "success": true})
 
 	}
@@ -200,7 +200,7 @@ func (h *FoodCategoryHandler) CreateMenuItemsHandler(newCache *algorithm.MenuCac
 			return
 		}
 
-		go newCache.ReloadFromDB()
+		newCache.ReloadFromDB()
 
 		c.JSON(http.StatusOK, gin.H{
 			"message": "menu items created successfully",
