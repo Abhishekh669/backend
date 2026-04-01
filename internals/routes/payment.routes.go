@@ -11,4 +11,5 @@ func PaymentRouter(router *gin.RouterGroup, app *app.App) {
 	paymentRoute.POST("/create", middlewares.UserMiddleware(), app.PaymentHandler.CreatePaymentHandler)
 	paymentRoute.GET("/approved-orders", middlewares.UserMiddleware(), app.PaymentHandler.GetAllApprovedOrdersForCashierHandler)
 	paymentRoute.GET("/order/:orderId", middlewares.UserMiddleware(), app.PaymentHandler.GetAllOrderDetailsForCashierByOrderIdHandler)
+	paymentRoute.DELETE("/order/:orderId", middlewares.UserMiddleware(), app.PaymentHandler.DeleteOrderByCashierHandler)
 }

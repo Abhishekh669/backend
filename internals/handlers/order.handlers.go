@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Abhishekh669/backend/internals/models"
 	"github.com/Abhishekh669/backend/internals/services"
@@ -16,6 +17,61 @@ type OrderHandler struct {
 	orderService services.OrderService
 }
 
+func (h *OrderHandler) GetAllOrderHistoryForAdminHandler(c *gin.Context) {
+	limitStr := c.Query("limit")
+	pageStr := c.Query("page")
+	fromDateStr := c.Query("from_date")
+	toDateStr := c.Query("to_date")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		limit = 10
+	}
+
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page < 0 {
+		page = 0
+	}
+
+	var fromDate, toDate *time.Time
+
+	// ✅ FIX: use correct format for YYYY-MM-DD
+	const layout = "2006-01-02"
+
+	if fromDateStr != "" {
+		if t, err := time.Parse(layout, fromDateStr); err == nil {
+			// start of day UTC
+			start := t.UTC()
+			fromDate = &start
+		} else {
+			fmt.Println("from_date parse error:", err)
+		}
+	}
+
+	if toDateStr != "" {
+		if t, err := time.Parse(layout, toDateStr); err == nil {
+			// ✅ IMPORTANT: make it end of day
+			end := t.UTC().Add(24*time.Hour - time.Nanosecond)
+			toDate = &end
+		} else {
+			fmt.Println("to_date parse error:", err)
+		}
+	}
+
+	response, err := h.orderService.GetAllOrderHistoryForAdmin(c, limit, page, fromDate, toDate)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "failed to fetch order history",
+			"success": false,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"orders":  response,
+	})
+}
 func (h *OrderHandler) GetAllApprovalRequestHandler(c *gin.Context) {
 	requests, err := h.orderService.GetAllApprovalRequestService(c)
 	fmt.Println("this is reror in get all approverd orders : ", requests, err)
@@ -393,6 +449,7 @@ func (h *OrderHandler) GetOrderRequestByTableSessionIdHandler(c *gin.Context) {
 
 func (h *OrderHandler) GetAllOrderRequestHandler(c *gin.Context) {
 	orderRequests, err := h.orderService.GetAllOrderRequests(c)
+	fmt.Println("thisi s roder erquest : ", orderRequests, err)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
 		return
@@ -406,6 +463,7 @@ func (h *OrderHandler) GetAllOrderRequestHandler(c *gin.Context) {
 func (h *OrderHandler) ApproveCustomerOrderHandler(c *gin.Context) {
 	var orderData *models.ApproveOrderType
 	if err := c.ShouldBindJSON(&orderData); err != nil {
+		fmt.Println("error in approing order : ", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
 		return
 	}

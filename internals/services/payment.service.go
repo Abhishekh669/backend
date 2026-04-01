@@ -14,14 +14,23 @@ import (
 // PaymentService defines all payment-related operations
 type PaymentService interface {
 	// CreatePaymentSer
-
 	GetAllOrderDetailsForCAshierByOrderId(c *gin.Context, orderId uuid.UUID) (*models.PaymentDetailsForCashierWithDiscount, error)
 	GetAllApprovedOrdersForCashierService(c *gin.Context) ([]models.GetOrderDetailsForCashier, error)
 	CreatePaymentService(c *gin.Context, req *models.CreatePayment) (*models.Payment, error)
+	DeleteOrderByCashier(c *gin.Context, orderId uuid.UUID) error
 }
 
 type paymentService struct {
 	repo repository.PaymentRepo
+}
+
+func (s *paymentService) DeleteOrderByCashier(c *gin.Context, orderId uuid.UUID) error {
+	_, err := lib.HasPermissionCheck(c, rbac.DeleteOrder)
+	if err != nil {
+		return errors.New("user not authorized")
+	}
+
+	return s.repo.DeleteOrderByCashier(c.Request.Context(), orderId)
 }
 
 func (s *paymentService) GetAllOrderDetailsForCAshierByOrderId(c *gin.Context, orderId uuid.UUID) (*models.PaymentDetailsForCashierWithDiscount, error) {

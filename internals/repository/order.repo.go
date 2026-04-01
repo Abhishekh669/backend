@@ -16,8 +16,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type OrderHistoryResponse struct {
+	Orders     []models.GetOrderDetailsForCashier `json:"orders"`
+	Total      int                                `json:"total"`
+	HasMore    bool                               `json:"has_more"`
+	NextOffset int                                `json:"next_offset"`
+}
+
 // OrderRepo interface defines all order-related operations
 type OrderRepo interface {
+	GetAllOrderHistoryForAdmin(ctx context.Context, limit, page int, fromDate, toDate *time.Time) (*OrderHistoryResponse, error)
 	GetAllOrderApprovalRequest(ctx context.Context) ([]models.TableValidation, error)
 	UpdateOrderItemStatus(ctx context.Context, status *models.OrderStatus, orderItemId string, orderId string) error
 	DeleteTablesSessionById(ctx context.Context, tableSessionId *uuid.UUID, tableNumber int, phoneNumber string) error
@@ -46,10 +54,205 @@ type orderRepo struct {
 	pool *pgxpool.Pool
 }
 
-func (r *orderRepo) GetAllOrdersForCashier(ctx context.Context) {
+func (r *orderRepo) GetAllOrderHistoryForAdmin(ctx context.Context, limit, page int, fromDate, toDate *time.Time) (*OrderHistoryResponse, error) {
+	// Calculate offset
+	offset := page * limit
 
+	// Build the count query first
+	countQuery := `
+		SELECT COUNT(*)
+		FROM orders o
+		WHERE 1=1
+	`
+
+	countArgs := []interface{}{}
+	countCounter := 1
+
+	if fromDate != nil {
+		countQuery += fmt.Sprintf(" AND o.created_at >= $%d", countCounter)
+		countArgs = append(countArgs, *fromDate)
+		countCounter++
+	}
+
+	if toDate != nil {
+		countQuery += fmt.Sprintf(" AND o.created_at <= $%d", countCounter)
+		countArgs = append(countArgs, *toDate)
+		countCounter++
+	}
+
+	var total int
+	err := r.pool.QueryRow(ctx, countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get total count: %w", err)
+	}
+
+	// Build the data query using a CTE to first get paginated orders
+	dataQuery := `
+		WITH paginated_orders AS (
+			SELECT 
+				o.id, o.status, ts.table_number,
+				o.customer_name, o.customer_phone,
+				o.waiter_id, o.created_at
+			FROM orders o
+			JOIN table_session ts ON o.table_session_id = ts.id
+			WHERE 1=1
+	`
+
+	// Add date filters to CTE
+	args := []interface{}{}
+	argCounter := 1
+
+	if fromDate != nil {
+		dataQuery += fmt.Sprintf(" AND o.created_at >= $%d", argCounter)
+		args = append(args, *fromDate)
+		argCounter++
+	}
+
+	if toDate != nil {
+		dataQuery += fmt.Sprintf(" AND o.created_at <= $%d", argCounter)
+		args = append(args, *toDate)
+		argCounter++
+	}
+
+	// Add ordering and pagination to CTE
+	dataQuery += fmt.Sprintf(" ORDER BY o.created_at DESC LIMIT $%d OFFSET $%d", argCounter, argCounter+1)
+	args = append(args, limit, offset)
+	argCounter += 2
+
+	// Now join with items and user info
+	dataQuery += `
+		)
+		SELECT 
+			po.id, po.status, po.table_number,
+			po.customer_name, po.customer_phone,
+			po.waiter_id, COALESCE(u.name, '') as waiter_name, u.image as waiter_image, 
+			po.created_at,
+			oi.id as item_id, oi.order_id, oi.menu_item_id, 
+			oi.quantity, oi.price, oi.status as item_status,
+			COALESCE(mi.name, '') as menu_name, mi.image_url as menu_image,
+			oi.created_at as item_created_at
+		FROM paginated_orders po
+		LEFT JOIN users u ON po.waiter_id = u.id
+		LEFT JOIN order_items oi ON oi.order_id = po.id
+		LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
+		ORDER BY po.created_at DESC
+	`
+
+	// Execute query
+	rows, err := r.pool.Query(ctx, dataQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch order history: %w", err)
+	}
+	defer rows.Close()
+
+	// Map to store orders
+	orderMap := make(map[uuid.UUID]*models.GetOrderDetailsForCashier)
+	orderKeys := make([]uuid.UUID, 0)
+
+	for rows.Next() {
+		var (
+			orderID       uuid.UUID
+			orderStatus   models.OrderStatus
+			tableNumber   int
+			customerName  *string
+			customerPhone *string
+			waiterID      *uuid.UUID
+			waiterName    string
+			waiterImage   *string
+			createdAt     time.Time
+
+			itemID        *uuid.UUID
+			itemOrderID   *uuid.UUID
+			menuItemID    *uuid.UUID
+			quantity      *float64
+			price         *float64
+			itemStatus    *models.OrderStatus
+			menuName      string
+			menuImage     *string
+			itemCreatedAt *time.Time
+		)
+
+		err := rows.Scan(
+			&orderID, &orderStatus, &tableNumber,
+			&customerName, &customerPhone,
+			&waiterID, &waiterName, &waiterImage, &createdAt,
+			&itemID, &itemOrderID, &menuItemID,
+			&quantity, &price, &itemStatus,
+			&menuName, &menuImage,
+			&itemCreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// Check if order already exists in map
+		if _, exists := orderMap[orderID]; !exists {
+			order := &models.GetOrderDetailsForCashier{
+				OrderId:        orderID,
+				Status:         orderStatus,
+				TableNumber:    tableNumber,
+				CustomerName:   customerName,
+				CustomerPhone:  customerPhone,
+				WaiterName:     waiterName,
+				WaiterImage:    waiterImage,
+				CreatedAt:      createdAt,
+				OrderMenuItems: []models.OrderItemType{},
+			}
+			if waiterID != nil {
+				order.WaiterId = *waiterID
+			}
+			orderMap[orderID] = order
+			orderKeys = append(orderKeys, orderID)
+		}
+
+		// Add order item if exists (only if we have actual item data)
+		if itemID != nil && menuItemID != nil && quantity != nil && price != nil && itemStatus != nil && itemOrderID != nil {
+			itemCreatedAtTime := createdAt
+			if itemCreatedAt != nil {
+				itemCreatedAtTime = *itemCreatedAt
+			}
+
+			orderMap[orderID].OrderMenuItems = append(
+				orderMap[orderID].OrderMenuItems,
+				models.OrderItemType{
+					Id:        *itemID,
+					OrderId:   *itemOrderID,
+					MenuId:    *menuItemID,
+					Quantity:  *quantity,
+					Price:     *price,
+					Status:    *itemStatus,
+					MenuName:  menuName,
+					MenuImage: menuImage,
+					CreatedAt: itemCreatedAtTime,
+				},
+			)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
+
+	// Convert map to slice preserving order
+	result := make([]models.GetOrderDetailsForCashier, 0, len(orderMap))
+	for _, id := range orderKeys {
+		result = append(result, *orderMap[id])
+	}
+
+	// Calculate pagination info
+	hasMore := (page+1)*limit < total
+	nextPage := page + 1
+
+	// Build response
+	response := &OrderHistoryResponse{
+		Orders:     result,
+		Total:      total,
+		HasMore:    hasMore,
+		NextOffset: nextPage,
+	}
+
+	return response, nil
 }
-
 func (r *orderRepo) GetAllOrderApprovalRequest(ctx context.Context) ([]models.TableValidation, error) {
 	query := `
     SELECT
@@ -528,21 +731,20 @@ func (r *orderRepo) NewGetAllOrderForStatus(ctx context.Context) ([]models.Custo
 func (r *orderRepo) NewGetTableSessionByTableAndPhone(ctx context.Context, tableNumber int, customerPhone string) (*models.CustomerOrderRequest, error) {
 	// First, find the active session for this table
 	sessionQuery := `
-        SELECT 
-            id,
-            table_number,
-            open_time,
-            close_time,
-            status,
-            created_at,
-            updated_at
-        FROM table_session
-        WHERE table_number = $1
-            AND status = 'occupied'
-            AND open_time IS NOT NULL
-            AND close_time IS NULL
-        ORDER BY created_at DESC
-        LIMIT 1
+		       SELECT 
+		    id,
+		    table_number,
+		    open_time,
+		    close_time,
+		    status,
+		    created_at,
+		    updated_at
+		FROM table_session
+		WHERE table_number = $1
+		    AND status = 'occupied'
+		    AND close_time IS NULL
+		ORDER BY open_time DESC
+		LIMIT 1;
     `
 
 	var session models.TableSession
@@ -556,6 +758,8 @@ func (r *orderRepo) NewGetTableSessionByTableAndPhone(ctx context.Context, table
 		&session.CreatedAt,
 		&session.UpdatedAt,
 	)
+
+	fmt.Println("thisis the table sesiosn : ", session)
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -1426,7 +1630,6 @@ func (r *orderRepo) GetAllOrderRequest(ctx context.Context) ([]models.CustomerOr
 func (r *orderRepo) NewGetAllOrderRequest(ctx context.Context) ([]models.CustomerOrderRequest, error) {
 	query := `
         WITH filtered_orders AS (
-            -- First, get all orders that have at least one not-approved item
             SELECT DISTINCT o.id
             FROM orders o
             INNER JOIN order_items oi ON oi.order_id = o.id
@@ -1447,43 +1650,49 @@ func (r *orderRepo) NewGetAllOrderRequest(ctx context.Context) ([]models.Custome
                 AND ts.close_time IS NULL
         )
         SELECT 
-            json_agg(
-                json_build_object(
-                    'id', o.id,
-                    'status', o.status,
-                    'customer_name', o.customer_name,
-                    'customer_phone', o.customer_phone,
-                    'note', o.note,
-                    'table_session', json_build_object(
-                        'id', ts.id,
-                        'table_number', ts.table_number,
-                        'open_time', ts.open_time,
-                        'close_time', ts.close_time,
-                        'status', ts.status,
-                        'created_at', ts.created_at,
-                        'updated_at', ts.updated_at
-                    ),
-                    'order_items', (
-                        SELECT json_agg(
-                            json_build_object(
-                                'id', oi.id,
-                                'price', oi.price,
-                                'quantity', oi.quantity,
-                                'order_id', oi.order_id,
-                                'menu_id', oi.menu_item_id,
-                                'status', oi.status,
-                                'menu_name', mi.name,
-                                'menu_image', mi.image_url,
-                                'created_at', oi.created_at
+            COALESCE(
+                json_agg(
+                    json_build_object(
+                        'id', o.id,
+                        'status', o.status,
+                        'customer_name', o.customer_name,
+                        'customer_phone', o.customer_phone,
+                        'note', o.note,
+                        'table_session', json_build_object(
+                            'id', ts.id,
+                            'table_number', ts.table_number,
+                            'open_time', ts.open_time,
+                            'close_time', ts.close_time,
+                            'status', ts.status,
+                            'created_at', ts.created_at,
+                            'updated_at', ts.updated_at
+                        ),
+                        'order_items', (
+                            SELECT COALESCE(
+                                json_agg(
+                                    json_build_object(
+                                        'id', oi.id,
+                                        'price', oi.price,
+                                        'quantity', oi.quantity,
+                                        'order_id', oi.order_id,
+                                        'menu_id', oi.menu_item_id,
+                                        'status', oi.status,
+                                        'menu_name', mi.name,
+                                        'menu_image', mi.image_url,
+                                        'created_at', oi.created_at
+                                    )
+                                    ORDER BY oi.created_at DESC
+                                ),
+                                '[]'::json
                             )
-                            ORDER BY oi.created_at DESC
+                            FROM order_items oi
+                            LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
+                            WHERE oi.order_id = o.id AND oi.status = 'not-approved'
                         )
-                        FROM order_items oi
-                        LEFT JOIN menu_items mi ON mi.id = oi.menu_item_id
-                        WHERE oi.order_id = o.id AND oi.status = 'not-approved'
                     )
-                )
-                ORDER BY ts.table_number, o.created_at DESC
+                    ORDER BY ts.table_number, o.created_at DESC
+                ),
+                '[]'::json
             ) as result
         FROM session_data ts
         INNER JOIN orders o ON o.table_session_id = ts.id
@@ -1494,17 +1703,21 @@ func (r *orderRepo) NewGetAllOrderRequest(ctx context.Context) ([]models.Custome
 	var resultJSON []byte
 	err := r.pool.QueryRow(ctx, query).Scan(&resultJSON)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return []models.CustomerOrderRequest{}, nil
 		}
 		return nil, fmt.Errorf("failed to query order requests: %w", err)
+	}
+
+	// Guard: treat NULL or empty scan as empty result
+	if len(resultJSON) == 0 {
+		return []models.CustomerOrderRequest{}, nil
 	}
 
 	var result []models.CustomerOrderRequest
 	if err := json.Unmarshal(resultJSON, &result); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal result: %w", err)
 	}
-
 	return result, nil
 }
 
@@ -1552,27 +1765,32 @@ func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder 
 		batch := &pgx.Batch{}
 
 		batch.Queue(`
-            UPDATE table_session 
-            SET table_number = $1, updated_at = NOW() 
-            WHERE id = $2
-        `, approveOrder.TableNumber, approveOrder.TableSessionID)
+        UPDATE table_session 
+        SET table_number = $1, updated_at = NOW() 
+        WHERE id = $2
+    `, approveOrder.TableNumber, approveOrder.TableSessionID)
 
 		batch.Queue(`
-            UPDATE table_status SET status = 'empty' WHERE table_number = $1
-        `, tableSession.TableNumber)
+        UPDATE table_status SET status = 'empty' WHERE table_number = $1
+    `, tableSession.TableNumber)
 
 		batch.Queue(`
-            UPDATE table_status SET status = 'occupied' WHERE table_number = $1
-        `, approveOrder.TableNumber)
+        UPDATE table_status SET status = 'occupied' WHERE table_number = $1
+    `, approveOrder.TableNumber)
 
 		br := tx.SendBatch(ctx, batch)
-		defer br.Close()
 
 		for i := 0; i < 3; i++ {
 			_, err = br.Exec()
 			if err != nil {
+				br.Close()
 				return fmt.Errorf("failed batch operation %d: %w", i, err)
 			}
+		}
+
+		// ✅ VERY IMPORTANT
+		if err = br.Close(); err != nil {
+			return fmt.Errorf("failed to close batch: %w", err)
 		}
 	}
 
@@ -1713,6 +1931,55 @@ func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder 
 		)
 		if err != nil {
 			return fmt.Errorf("failed bulk item operation: %w", err)
+		}
+	}
+
+	if len(approveOrder.AddedMenuItems) > 0 {
+		batch := &pgx.Batch{}
+
+		validCount := 0
+
+		for _, item := range approveOrder.AddedMenuItems {
+			if item.Quantity <= 0 {
+				continue
+			}
+
+			validCount++
+
+			batch.Queue(`
+		INSERT INTO order_items (
+			order_id,
+			menu_item_id,
+			quantity,
+			price,
+			status,
+			created_at
+		)
+		VALUES ($1, $2, $3, $4, $5::order_status_enum, NOW())
+		`,
+				approveOrder.ID,
+				item.MenuItemID,
+				item.Quantity,
+				item.Price,
+				models.OrderStatusApproved,
+			)
+		}
+
+		if validCount > 0 {
+			br := tx.SendBatch(ctx, batch)
+
+			for i := 0; i < validCount; i++ {
+				_, err = br.Exec()
+				if err != nil {
+					br.Close()
+					return fmt.Errorf("failed to insert added menu item %d: %w", i, err)
+				}
+			}
+
+			// ✅ VERY IMPORTANT
+			if err = br.Close(); err != nil {
+				return fmt.Errorf("failed to close batch: %w", err)
+			}
 		}
 	}
 

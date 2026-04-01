@@ -269,7 +269,7 @@ WHERE close_time IS NULL;
     -- Orders placed in a table session
     CREATE TABLE IF NOT EXISTS orders (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      table_session_id UUID REFERENCES table_session(id) ON DELETE CASCADE,
+      table_session_id UUID REFERENCES table_session(id) ,
       customer_name VARCHAR(100),
       customer_phone VARCHAR(20),
 	  waiter_id UUID REFERENCES users(id),
@@ -327,7 +327,7 @@ WHERE close_time IS NULL;
 	CREATE TABLE IF NOT EXISTS payments (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-		order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+		order_id UUID NOT NULL REFERENCES orders(id) ON DELETE SET NULL,
 
 		payment_method payment_method_enum NOT NULL,
 		online_gateway online_gateway_enum,
@@ -378,6 +378,48 @@ WHERE close_time IS NULL;
 	CREATE INDEX IF NOT EXISTS idx_user_tokens_created_at 
 	ON user_tokens(created_at);
 	`,
+	},
+	{
+		Name: "token_transactions",
+		Schema: `
+			CREATE TABLE IF NOT EXISTS token_transactions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    phone_number VARCHAR(20) NOT NULL,
+
+    amount NUMERIC(10,2) NOT NULL,
+    type VARCHAR(20) NOT NULL CHECK (type IN ('EARN', 'SPEND', 'STREAK')),
+    source VARCHAR(50), -- 'ORDER', 'STREAK'
+
+    reference_id UUID, -- order_id (optional)
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_transactions_phone 
+ON token_transactions(phone_number);
+
+CREATE INDEX IF NOT EXISTS idx_token_transactions_created_at 
+ON token_transactions(created_at);
+		`,
+	},
+	{
+		Name: "CustomerStreak",
+		Schema: `
+			CREATE TABLE IF NOT EXISTS customer_streaks (
+    phone_number VARCHAR(20) PRIMARY KEY,
+
+    current_streak INT NOT NULL DEFAULT 0,
+    last_visit DATE,
+    monthly_days INT NOT NULL DEFAULT 0,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_customer_streaks_last_visit 
+ON customer_streaks(last_visit);
+		`,
 	},
 }
 

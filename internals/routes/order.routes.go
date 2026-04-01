@@ -24,6 +24,8 @@ func OrderServiceRouter(router *gin.RouterGroup, app *app.App) {
 	orderServiceRoute.GET("/get-table-validation-by-phone-n-number", app.Orderhandler.GetTableValidationByPhoneAndTableHandler)
 	orderServiceRoute.GET("/get-table-validation-from-token", middlewares.CustomerMiddleware(app), app.Orderhandler.GetTableValidationFromTokenHandler)
 
+	orderServiceRoute.GET("/get-all-order-history", middlewares.UserMiddleware(), app.Orderhandler.GetAllOrderHistoryForAdminHandler)
+
 	//mobile seciton
 	orderServiceRoute.PUT("/update-order-item", middlewares.UserMiddleware(), app.Orderhandler.UpdateOrderItemHandler)
 	orderServiceRoute.GET("/get-all-approval-requests", middlewares.UserMiddleware(), app.Orderhandler.GetAllApprovalRequestHandler)

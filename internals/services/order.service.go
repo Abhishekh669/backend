@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Abhishekh669/backend/internals/lib"
 	"github.com/Abhishekh669/backend/internals/models"
@@ -14,6 +15,7 @@ import (
 )
 
 type OrderService interface {
+	GetAllOrderHistoryForAdmin(c *gin.Context, limit, page int, fromDate, toDate *time.Time) (*repository.OrderHistoryResponse, error)
 	GetAllApprovalRequestService(c *gin.Context) ([]models.TableValidation, error)
 	UpdateOrderItemService(c *gin.Context, updateData *models.UpdateOrderItem) error
 	DeleteTableSessionByIdService(c *gin.Context, id *uuid.UUID, tableNumber int, phoneNumber string) error
@@ -41,6 +43,14 @@ const (
 	OrderNotApproved ReqStatus = "not_approved"
 	OrderApproved    ReqStatus = "approved"
 )
+
+func (s *orderService) GetAllOrderHistoryForAdmin(c *gin.Context, limit, page int, fromDate, toDate *time.Time) (*repository.OrderHistoryResponse, error) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewOrder)
+	if err != nil {
+		return nil, errors.New("user not authorized")
+	}
+	return s.repo.GetAllOrderHistoryForAdmin(c.Request.Context(), limit, page, fromDate, toDate)
+}
 
 func (s *orderService) GetAllApprovalRequestService(c *gin.Context) ([]models.TableValidation, error) {
 	_, err := lib.HasPermissionCheck(c, rbac.ViewOrder)
@@ -173,10 +183,18 @@ func (s *orderService) GetAllOrderRequests(c *gin.Context) ([]models.CustomerOrd
 }
 
 func (s *orderService) ApproveCustomerOrder(c *gin.Context, approveOrder *models.ApproveOrderType) error {
+	fmt.Println("thisi si beforeh te saving user id : ", approveOrder)
 	_, err := lib.HasPermissionCheck(c, rbac.CreateOrder)
 	if err != nil {
 		return errors.New("user not authorized")
 	}
+
+	userId, err := GetUserIDFromContext(c)
+	if err != nil {
+		return errors.New("unable to fetch user ID from context")
+	}
+	approveOrder.WaiterId = userId
+	fmt.Println("iamnowapproving the order : ", approveOrder)
 	return s.repo.NewApproveCustomerRequest(c.Request.Context(), approveOrder)
 }
 
