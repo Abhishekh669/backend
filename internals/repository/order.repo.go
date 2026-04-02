@@ -2511,8 +2511,7 @@ func (r *orderRepo) NewCreateCustomerOrder(ctx context.Context, customerOrder *m
 	query := `
 		SELECT id, table_number, open_time, close_time, status, created_at, updated_at
 		FROM table_session
-		WHERE open_time IS NOT NULL
-		AND close_time IS NULL
+		WHERE close_time IS NULL
 		AND table_number = $1
 	`
 	err = tx.QueryRow(ctx, query, customerOrder.TableNumber).Scan(
