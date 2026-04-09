@@ -1760,6 +1760,18 @@ func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder 
 		return fmt.Errorf("failed to fetch table session: %w", err)
 	}
 
+	_, err = tx.Exec(ctx,
+		`UPDATE table_validation 
+         SET phone_number=$1, updated_at=NOW()
+         WHERE table_number=$2`,
+		approveOrder.CustomerPhone,
+		approveOrder.TableNumber,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update table validation : %w", err)
+	}
+
 	// Step 2: Batch table status updates if table number changed
 	if tableSession.TableNumber != approveOrder.TableNumber {
 		batch := &pgx.Batch{}

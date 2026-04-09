@@ -55,7 +55,6 @@ func (r *paymentRepo) GetAllOrderDetailsForCashierByOrderId(ctx context.Context,
 		return nil, fmt.Errorf("order not found: %w", err)
 	}
 
-	// Ensure order is not nil
 	if order == nil {
 		return nil, fmt.Errorf("order is nil for ID: %v", orderId)
 	}

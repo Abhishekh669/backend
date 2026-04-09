@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	"github.com/Abhishekh669/backend/internals/algorithm"
 	"github.com/Abhishekh669/backend/internals/handlers"
 	"github.com/Abhishekh669/backend/internals/repository"
 	"github.com/Abhishekh669/backend/internals/services"
@@ -37,6 +38,10 @@ type App struct {
 	PaymentRepo    repository.PaymentRepo
 	PaymentService services.PaymentService
 	PaymentHandler handlers.PaymentHandler
+
+	ReportRepo    repository.ReportRepo
+	ReportCache   *algorithm.DefaultRevenueCache
+	ReportHandler handlers.ReportHandler
 }
 
 func New() (*App, error) {
@@ -75,6 +80,10 @@ func New() (*App, error) {
 	paymentService := services.NewPaymentService(paymentRepo)
 	paymentHandler := handlers.NewPaymentHandler(paymentService)
 
+	reportRepo := repository.NewReportRepo()
+	reportCache := algorithm.NewDefaultRevenueCache(reportRepo)
+	reportHandler := handlers.NewReportHandler(reportRepo)
+
 	return &App{
 		UserRepo:    userRepo,
 		UserService: userService,
@@ -103,5 +112,9 @@ func New() (*App, error) {
 		PaymentRepo:    paymentRepo,
 		PaymentService: paymentService,
 		PaymentHandler: *paymentHandler,
+
+		ReportRepo:    reportRepo,
+		ReportCache:   reportCache,
+		ReportHandler: *reportHandler,
 	}, nil
 }

@@ -27,8 +27,7 @@ func main() {
 		log.Printf("db conn err : %v", err)
 	}
 
-	app, err := app.New()
-
+	application, err := app.New()
 	if err != nil {
 		log.Fatalf("❌ Failed to initialize app: %v", err)
 	}
@@ -40,8 +39,6 @@ func main() {
 	router.Use(gin.Recovery())
 
 	router.Use(cors.New(cors.Config{
-		// AllowOrigins: []string{"http://localhost:3000", "https://kitbmantra.vercel.app"},
-		// AllowAllOrigins: "",
 		AllowOrigins:     []string{"http://localhost:3000", "*", "https://rms-gules.vercel.app"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Content-Type", "Authorization", "X-App-Token"},
@@ -57,20 +54,33 @@ func main() {
 		c.JSON(200, gin.H{"pong": "pong"})
 	})
 
-	newCache := algorithm.NewMenuCache(app.FoodCategoryRepo)
+	// ── Menu cache (existing) ──────────────────────────────────────────────────
+	newCache := algorithm.NewMenuCache(application.FoodCategoryRepo)
 	newCache.ReloadFromDB()
-	//TODO: add middleware latter here
+
 	router.GET("/get-menu-n-categories", func(c *gin.Context) {
-
 		groupedMenu := newCache.GetAll()
-
 		c.JSON(http.StatusOK, gin.H{
 			"success":      true,
 			"grouped_menu": groupedMenu,
 		})
 	})
-	routes.SetUpRoutes(router, app, newCache)
-	jobs.StartDailyAttendanceReview(app.AttendanceRepo)
+
+	// ── Report cache: load on startup in background ────────────────────────────
+	// Non-blocking: server starts immediately, cache fills in background.
+	// The /admin/reports/status endpoint tells the frontend when data is ready.
+	go func() {
+		log.Println("📊 [ReportCache] Loading initial report data in background...")
+		application.ReportCache.ReloadFromDB()
+	}()
+
+	// ── Nightly report refresh job (00:05 every night) ─────────────────────────
+	jobs.StartNightlyReportRefresh(application.ReportCache)
+
+	// ── Existing jobs ──────────────────────────────────────────────────────────
+	jobs.StartDailyAttendanceReview(application.AttendanceRepo)
+
+	routes.SetUpRoutes(router, application, newCache)
 
 	log.Println("🌐 Starting HTTP server on :8080...")
 	log.Println("📡 Server endpoints are now available")
@@ -79,5 +89,4 @@ func main() {
 	if err := router.Run(":8080"); err != nil {
 		log.Fatalf("❌ Server failed to start: %v", err)
 	}
-
 }
