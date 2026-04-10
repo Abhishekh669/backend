@@ -14,6 +14,12 @@ import (
 // ─── Interface ────────────────────────────────────────────────────────────────
 
 type ReportRepo interface {
+	NewGetCustomRangeRawMaterialReport(ctx context.Context, req *models.NewRawMaterialCustomRangeReportRequest) (*models.NewCustomRangeRawMaterialResponse, error)
+	NewGetDefaultRawMaterialReport(ctx context.Context) (*models.NewDefaultRawMaterialResponse, error)
+
+	NewGetDefaultStaffReport(ctx context.Context) (*models.NewDefaultStaffResponse, error)
+	NewGetCustomRangeStaffReport(ctx context.Context, req *models.NewStaffCustomRangeReportRequest) (*models.NewCustomRangeStaffResponse, error)
+
 	NewGetDefaultTableReport(ctx context.Context) (*models.NewDefaultTableResponse, error)
 	NewGetCustomRangeTableReport(ctx context.Context, req *models.NewTableCustomRangeReportRequest) (*models.NewCustomRangeTableResponse, error)
 

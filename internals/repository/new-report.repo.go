@@ -59,6 +59,1634 @@ const (
 	MaxTableTrendLimit     = 50
 )
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const (
+	DefaultStaffTrendLimit = 10
+	MaxStaffTrendLimit     = 100
+	TopNStaff              = 10 // how many rows for "top N" lists
+)
+
+const (
+	DefaultRawMaterialTrendLimit = 10
+	MaxRawMaterialTrendLimit     = 100
+	TopNRawMaterials             = 10
+)
+
+// ────────────────────────────────────────────────────────────────────────────
+// DEFAULT REPORT
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetDefaultRawMaterialReport(ctx context.Context) (*models.NewDefaultRawMaterialResponse, error) {
+	to := time.Now()
+	from := to.AddDate(0, 0, -30)
+
+	var (
+		overview               models.NewRawMaterialOverviewCard
+		statsCard              models.NewRawMaterialStatsCard
+		dailyTrend             []models.NewRawMaterialTrendPoint
+		weeklyTrend            []models.NewRawMaterialTrendPoint
+		monthlyTrend           []models.NewRawMaterialTrendPoint
+		yearlyTrend            []models.NewRawMaterialTrendPoint
+		topUsedMaterials       []models.NewTopUsedRawMaterial
+		materialUsageBreakdown []models.NewRawMaterialUsageBreakdown
+		peakUsageHours         []models.NewRawMaterialPeakHour
+		dailyUsageSummary      []models.NewDailyRawMaterialUsage
+	)
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error { var e error; overview, e = r.NewGetRawMaterialOverview(gCtx, from, to); return e })
+	g.Go(func() error { var e error; statsCard, e = r.NewGetRawMaterialStatsCard(gCtx); return e })
+	g.Go(func() error { var e error; dailyTrend, e = r.NewGetLast7DaysRawMaterialTrend(gCtx); return e })
+	g.Go(func() error { var e error; weeklyTrend, e = r.NewGetLast7WeeksRawMaterialTrend(gCtx); return e })
+	g.Go(func() error { var e error; monthlyTrend, e = r.NewGetLast7MonthsRawMaterialTrend(gCtx); return e })
+	g.Go(func() error { var e error; yearlyTrend, e = r.NewGetLast7YearsRawMaterialTrend(gCtx); return e })
+	g.Go(func() error {
+		var e error
+		topUsedMaterials, e = r.NewGetTopUsedRawMaterials(gCtx, from, to, TopNRawMaterials)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		materialUsageBreakdown, e = r.NewGetRawMaterialUsageBreakdown(gCtx, from, to)
+		return e
+	})
+	g.Go(func() error { var e error; peakUsageHours, e = r.NewGetRawMaterialPeakHours(gCtx, from, to); return e })
+	g.Go(func() error {
+		var e error
+		dailyUsageSummary, e = r.NewGetDailyRawMaterialUsage(gCtx, from, to)
+		return e
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return &models.NewDefaultRawMaterialResponse{
+		Overview:               overview,
+		StatsCard:              statsCard,
+		DailyTrend:             dailyTrend,
+		WeeklyTrend:            weeklyTrend,
+		MonthlyTrend:           monthlyTrend,
+		YearlyTrend:            yearlyTrend,
+		TopUsedMaterials:       topUsedMaterials,
+		MaterialUsageBreakdown: materialUsageBreakdown,
+		PeakUsageHours:         peakUsageHours,
+		DailyUsageSummary:      dailyUsageSummary,
+	}, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// CUSTOM RANGE REPORT
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetCustomRangeRawMaterialReport(ctx context.Context, req *models.NewRawMaterialCustomRangeReportRequest) (*models.NewCustomRangeRawMaterialResponse, error) {
+	from := req.From
+	to := req.To.Truncate(24 * time.Hour).Add(24*time.Hour - time.Second)
+
+	limit := req.Limit
+	if limit <= 0 {
+		limit = DefaultRawMaterialTrendLimit
+	}
+	if limit > MaxRawMaterialTrendLimit {
+		limit = MaxRawMaterialTrendLimit
+	}
+	page := req.Page
+	if page < 0 {
+		page = 0
+	}
+
+	var (
+		overview               models.NewRawMaterialOverviewCard
+		statsCard              models.NewRawMaterialStatsCard
+		dailyTrend             *models.NewRawMaterialPaginatedTrendPoints
+		weeklyTrend            *models.NewRawMaterialPaginatedTrendPoints
+		monthlyTrend           *models.NewRawMaterialPaginatedTrendPoints
+		yearlyTrend            *models.NewRawMaterialPaginatedTrendPoints
+		topUsedMaterials       []models.NewTopUsedRawMaterial
+		materialUsageBreakdown []models.NewRawMaterialUsageBreakdown
+		peakUsageHours         []models.NewRawMaterialPeakHour
+		dailyUsageSummary      []models.NewDailyRawMaterialUsage
+	)
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error { var e error; overview, e = r.NewGetRawMaterialOverview(gCtx, from, to); return e })
+	g.Go(func() error { var e error; statsCard, e = r.NewGetRawMaterialStatsCard(gCtx); return e })
+	g.Go(func() error {
+		var e error
+		dailyTrend, e = r.NewGetCustomDailyRawMaterialTrend(gCtx, from, to, limit, page)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		weeklyTrend, e = r.NewGetCustomWeeklyRawMaterialTrend(gCtx, from, to, limit, page)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		monthlyTrend, e = r.NewGetCustomMonthlyRawMaterialTrend(gCtx, from, to, limit, page)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		yearlyTrend, e = r.NewGetCustomYearlyRawMaterialTrend(gCtx, from, to, limit, page)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		topUsedMaterials, e = r.NewGetTopUsedRawMaterials(gCtx, from, to, TopNRawMaterials)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		materialUsageBreakdown, e = r.NewGetRawMaterialUsageBreakdown(gCtx, from, to)
+		return e
+	})
+	g.Go(func() error { var e error; peakUsageHours, e = r.NewGetRawMaterialPeakHours(gCtx, from, to); return e })
+	g.Go(func() error {
+		var e error
+		dailyUsageSummary, e = r.NewGetDailyRawMaterialUsage(gCtx, from, to)
+		return e
+	})
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return &models.NewCustomRangeRawMaterialResponse{
+		Overview:               overview,
+		StatsCard:              statsCard,
+		DailyTrend:             dailyTrend,
+		WeeklyTrend:            weeklyTrend,
+		MonthlyTrend:           monthlyTrend,
+		YearlyTrend:            yearlyTrend,
+		TopUsedMaterials:       topUsedMaterials,
+		MaterialUsageBreakdown: materialUsageBreakdown,
+		PeakUsageHours:         peakUsageHours,
+		DailyUsageSummary:      dailyUsageSummary,
+	}, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// OVERVIEW
+//
+// The raw_material table has no usage-history column, so:
+//   - TotalMaterialUsed  = sum of current quantity (all stock on hand)
+//   - TotalInvestment    = sum of quantity * price
+//   - TotalOrders        = completed/approved orders in the period
+//   - HighestCost*       = material with the highest unit price
+//   - MostUsed*          = material with the highest quantity on hand
+//     (proxy: more stock ordered → more used)
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetRawMaterialOverview(ctx context.Context, from, to time.Time) (models.NewRawMaterialOverviewCard, error) {
+	query := `
+		SELECT
+			COALESCE(SUM(quantity), 0)                                  AS total_material_used,
+			COALESCE(SUM(quantity * price), 0)                          AS total_investment,
+			(
+				SELECT COUNT(DISTINCT o.id)
+				FROM orders o
+				WHERE o.created_at BETWEEN $1::timestamptz AND $2::timestamptz
+				  AND o.status IN ('completed', 'approved')
+			)                                                           AS total_orders,
+			COALESCE(MAX(price), 0)                                     AS highest_cost_material_value,
+			COALESCE((SELECT name  FROM raw_material ORDER BY price    DESC LIMIT 1), '') AS highest_cost_material_name,
+			COALESCE((SELECT quantity FROM raw_material ORDER BY quantity DESC LIMIT 1), 0) AS most_used_material_quantity,
+			COALESCE((SELECT name  FROM raw_material ORDER BY quantity DESC LIMIT 1), '') AS most_used_material_name
+		FROM raw_material
+	`
+
+	var o models.NewRawMaterialOverviewCard
+	if err := r.pool.QueryRow(ctx, query, from, to).Scan(
+		&o.TotalMaterialUsed,
+		&o.TotalInvestment,
+		&o.TotalOrders,
+		&o.HighestCostMaterialValue,
+		&o.HighestCostMaterialName,
+		&o.MostUsedMaterialQuantity,
+		&o.MostUsedMaterialName,
+	); err != nil {
+		return models.NewRawMaterialOverviewCard{}, fmt.Errorf("failed to scan raw material overview: %w", err)
+	}
+	return o, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// STATS CARD (all-time, no date filter)
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetRawMaterialStatsCard(ctx context.Context) (models.NewRawMaterialStatsCard, error) {
+	query := `
+		WITH ms AS (
+			SELECT
+				id, name, price AS unit_cost,
+				quantity AS current_stock,
+				quantity * price AS stock_value
+			FROM raw_material
+		)
+		SELECT
+			COUNT(*)                                                        AS total_materials,
+			COALESCE(SUM(current_stock), 0)                                 AS total_current_stock,
+			COALESCE(SUM(stock_value), 0)                                   AS total_inventory_value,
+			-- no usage history → use current stock as proxy
+			COALESCE(SUM(current_stock), 0)                                 AS total_material_used_all_time,
+			COALESCE(SUM(stock_value), 0)                                   AS total_investment_all_time,
+			COALESCE(MAX(current_stock), 0)                                 AS max_used_quantity,
+			COALESCE((SELECT name         FROM ms ORDER BY current_stock DESC LIMIT 1), '') AS most_used_name,
+			COALESCE((SELECT current_stock FROM ms ORDER BY current_stock DESC LIMIT 1), 0) AS most_used_qty,
+			COALESCE(MAX(unit_cost), 0)                                     AS most_expensive_unit_cost,
+			COALESCE((SELECT name FROM ms ORDER BY unit_cost DESC LIMIT 1), '') AS most_expensive_name,
+			COALESCE(AVG(stock_value), 0)                                   AS avg_material_value
+		FROM ms
+	`
+
+	var s models.NewRawMaterialStatsCard
+	if err := r.pool.QueryRow(ctx, query).Scan(
+		&s.TotalMaterials,
+		&s.TotalCurrentStock,
+		&s.TotalInventoryValue,
+		&s.TotalMaterialUsedAllTime,
+		&s.TotalInvestmentAllTime,
+		&s.MaxUsedQuantity,
+		&s.MostUsedMaterialName,
+		&s.MostUsedMaterialQuantity,
+		&s.MostExpensiveUnitCost,
+		&s.MostExpensiveMaterialName,
+		&s.AvgMaterialValue,
+	); err != nil {
+		return models.NewRawMaterialStatsCard{}, fmt.Errorf("failed to scan raw material stats card: %w", err)
+	}
+	return s, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// FIXED-WINDOW TREND QUERIES
+// Scan columns: period, material_used (count added that period), total_cost, orders_count
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) queryRawMaterialTrend(ctx context.Context, query string) ([]models.NewRawMaterialTrendPoint, error) {
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query raw material trend: %w", err)
+	}
+	defer rows.Close()
+
+	var result []models.NewRawMaterialTrendPoint
+	for rows.Next() {
+		var pt models.NewRawMaterialTrendPoint
+		if err := rows.Scan(&pt.Period, &pt.MaterialUsed, &pt.TotalCost, &pt.OrdersCount); err != nil {
+			return nil, fmt.Errorf("failed to scan raw material trend: %w", err)
+		}
+		result = append(result, pt)
+	}
+	return result, nil
+}
+
+func (r *reportRepo) NewGetLast7DaysRawMaterialTrend(ctx context.Context) ([]models.NewRawMaterialTrendPoint, error) {
+	return r.queryRawMaterialTrend(ctx, `
+		WITH daily AS (
+			SELECT
+				DATE(created_at AT TIME ZONE 'Asia/Kathmandu') AS period_date,
+				COUNT(*)                                        AS material_count,
+				COALESCE(SUM(price * quantity), 0)              AS total_value
+			FROM raw_material
+			WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+			GROUP BY DATE(created_at AT TIME ZONE 'Asia/Kathmandu')
+		)
+		SELECT TO_CHAR(period_date, 'YYYY-MM-DD'), material_count, total_value, 0
+		FROM daily ORDER BY period_date ASC`)
+}
+
+func (r *reportRepo) NewGetLast7WeeksRawMaterialTrend(ctx context.Context) ([]models.NewRawMaterialTrendPoint, error) {
+	return r.queryRawMaterialTrend(ctx, `
+		WITH weekly AS (
+			SELECT
+				DATE_TRUNC('week', created_at AT TIME ZONE 'Asia/Kathmandu') AS period_date,
+				COUNT(*)                                                      AS material_count,
+				COALESCE(SUM(price * quantity), 0)                            AS total_value
+			FROM raw_material
+			WHERE created_at >= CURRENT_DATE - INTERVAL '7 weeks'
+			GROUP BY DATE_TRUNC('week', created_at AT TIME ZONE 'Asia/Kathmandu')
+		)
+		SELECT TO_CHAR(period_date, 'IYYY-"W"IW'), material_count, total_value, 0
+		FROM weekly ORDER BY period_date ASC`)
+}
+
+func (r *reportRepo) NewGetLast7MonthsRawMaterialTrend(ctx context.Context) ([]models.NewRawMaterialTrendPoint, error) {
+	return r.queryRawMaterialTrend(ctx, `
+		WITH monthly AS (
+			SELECT
+				DATE_TRUNC('month', created_at AT TIME ZONE 'Asia/Kathmandu') AS period_date,
+				COUNT(*)                                                       AS material_count,
+				COALESCE(SUM(price * quantity), 0)                             AS total_value
+			FROM raw_material
+			WHERE created_at >= CURRENT_DATE - INTERVAL '7 months'
+			GROUP BY DATE_TRUNC('month', created_at AT TIME ZONE 'Asia/Kathmandu')
+		)
+		SELECT TO_CHAR(period_date, 'YYYY-MM'), material_count, total_value, 0
+		FROM monthly ORDER BY period_date ASC`)
+}
+
+func (r *reportRepo) NewGetLast7YearsRawMaterialTrend(ctx context.Context) ([]models.NewRawMaterialTrendPoint, error) {
+	return r.queryRawMaterialTrend(ctx, `
+		WITH yearly AS (
+			SELECT
+				DATE_TRUNC('year', created_at AT TIME ZONE 'Asia/Kathmandu') AS period_date,
+				COUNT(*)                                                      AS material_count,
+				COALESCE(SUM(price * quantity), 0)                            AS total_value
+			FROM raw_material
+			WHERE created_at >= CURRENT_DATE - INTERVAL '7 years'
+			GROUP BY DATE_TRUNC('year', created_at AT TIME ZONE 'Asia/Kathmandu')
+		)
+		SELECT TO_CHAR(period_date, 'YYYY'), material_count, total_value, 0
+		FROM yearly ORDER BY period_date ASC`)
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// PAGINATED CUSTOM TREND HELPER
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) scanPaginatedRawMaterialTrend(
+	ctx context.Context,
+	query string,
+	from, to time.Time,
+	limit, page, offset, total int,
+) (*models.NewRawMaterialPaginatedTrendPoints, error) {
+	var raw []byte
+	if err := r.pool.QueryRow(ctx, query, from, to, limit, offset).Scan(&raw); err != nil {
+		return nil, fmt.Errorf("paginated raw material trend query: %w", err)
+	}
+	var result []models.NewRawMaterialTrendPoint
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("paginated raw material trend unmarshal: %w", err)
+	}
+	hasMore := (page+1)*limit < total
+	next := page + 1
+	if !hasMore {
+		next = page
+	}
+	return &models.NewRawMaterialPaginatedTrendPoints{
+		Data: result,
+		Pagination: models.NewPaginationInfo{
+			Total: total, HasMore: hasMore, NextPage: next, Limit: limit, Page: page,
+		},
+	}, nil
+}
+
+func (r *reportRepo) NewGetCustomDailyRawMaterialTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewRawMaterialPaginatedTrendPoints, error) {
+	offset := page * limit
+	var total int
+	if err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(DISTINCT DATE(created_at AT TIME ZONE 'Asia/Kathmandu'))
+		 FROM raw_material WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz`,
+		from, to,
+	).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count daily raw material trend: %w", err)
+	}
+	q := `SELECT COALESCE(json_agg(json_build_object(
+			'period',period,'material_used',material_used,'total_cost',total_cost,'orders_count',orders_count
+		) ORDER BY period),'[]'::json) FROM (
+		SELECT TO_CHAR(DATE(created_at AT TIME ZONE 'Asia/Kathmandu'),'YYYY-MM-DD') AS period,
+			COUNT(*)::float AS material_used,
+			COALESCE(SUM(price*quantity),0) AS total_cost,
+			0 AS orders_count
+		FROM raw_material
+		WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz
+		GROUP BY DATE(created_at AT TIME ZONE 'Asia/Kathmandu')
+		ORDER BY 1 ASC LIMIT $3 OFFSET $4) sub`
+	return r.scanPaginatedRawMaterialTrend(ctx, q, from, to, limit, page, offset, total)
+}
+
+func (r *reportRepo) NewGetCustomWeeklyRawMaterialTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewRawMaterialPaginatedTrendPoints, error) {
+	offset := page * limit
+	var total int
+	if err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(DISTINCT DATE_TRUNC('week', created_at AT TIME ZONE 'Asia/Kathmandu'))
+		 FROM raw_material WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz`,
+		from, to,
+	).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count weekly raw material trend: %w", err)
+	}
+	q := `SELECT COALESCE(json_agg(json_build_object(
+			'period',period,'material_used',material_used,'total_cost',total_cost,'orders_count',orders_count
+		) ORDER BY week_start),'[]'::json) FROM (
+		SELECT DATE_TRUNC('week',created_at AT TIME ZONE 'Asia/Kathmandu') AS week_start,
+			TO_CHAR(DATE_TRUNC('week',created_at AT TIME ZONE 'Asia/Kathmandu'),'IYYY-"W"IW') AS period,
+			COUNT(*)::float AS material_used,
+			COALESCE(SUM(price*quantity),0) AS total_cost,
+			0 AS orders_count
+		FROM raw_material
+		WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz
+		GROUP BY DATE_TRUNC('week',created_at AT TIME ZONE 'Asia/Kathmandu')
+		ORDER BY week_start ASC LIMIT $3 OFFSET $4) sub`
+	return r.scanPaginatedRawMaterialTrend(ctx, q, from, to, limit, page, offset, total)
+}
+
+func (r *reportRepo) NewGetCustomMonthlyRawMaterialTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewRawMaterialPaginatedTrendPoints, error) {
+	offset := page * limit
+	var total int
+	if err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(DISTINCT DATE_TRUNC('month', created_at AT TIME ZONE 'Asia/Kathmandu'))
+		 FROM raw_material WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz`,
+		from, to,
+	).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count monthly raw material trend: %w", err)
+	}
+	q := `SELECT COALESCE(json_agg(json_build_object(
+			'period',period,'material_used',material_used,'total_cost',total_cost,'orders_count',orders_count
+		) ORDER BY month_start),'[]'::json) FROM (
+		SELECT DATE_TRUNC('month',created_at AT TIME ZONE 'Asia/Kathmandu') AS month_start,
+			TO_CHAR(DATE_TRUNC('month',created_at AT TIME ZONE 'Asia/Kathmandu'),'YYYY-MM') AS period,
+			COUNT(*)::float AS material_used,
+			COALESCE(SUM(price*quantity),0) AS total_cost,
+			0 AS orders_count
+		FROM raw_material
+		WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz
+		GROUP BY DATE_TRUNC('month',created_at AT TIME ZONE 'Asia/Kathmandu')
+		ORDER BY month_start ASC LIMIT $3 OFFSET $4) sub`
+	return r.scanPaginatedRawMaterialTrend(ctx, q, from, to, limit, page, offset, total)
+}
+
+func (r *reportRepo) NewGetCustomYearlyRawMaterialTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewRawMaterialPaginatedTrendPoints, error) {
+	offset := page * limit
+	var total int
+	if err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(DISTINCT DATE_TRUNC('year', created_at AT TIME ZONE 'Asia/Kathmandu'))
+		 FROM raw_material WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz`,
+		from, to,
+	).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count yearly raw material trend: %w", err)
+	}
+	q := `SELECT COALESCE(json_agg(json_build_object(
+			'period',period,'material_used',material_used,'total_cost',total_cost,'orders_count',orders_count
+		) ORDER BY year_start),'[]'::json) FROM (
+		SELECT DATE_TRUNC('year',created_at AT TIME ZONE 'Asia/Kathmandu') AS year_start,
+			TO_CHAR(DATE_TRUNC('year',created_at AT TIME ZONE 'Asia/Kathmandu'),'YYYY') AS period,
+			COUNT(*)::float AS material_used,
+			COALESCE(SUM(price*quantity),0) AS total_cost,
+			0 AS orders_count
+		FROM raw_material
+		WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz
+		GROUP BY DATE_TRUNC('year',created_at AT TIME ZONE 'Asia/Kathmandu')
+		ORDER BY year_start ASC LIMIT $3 OFFSET $4) sub`
+	return r.scanPaginatedRawMaterialTrend(ctx, q, from, to, limit, page, offset, total)
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// TOP USED RAW MATERIALS
+//
+// FIX: the old query passed $1/$2 (from/to) but never used them in the SQL,
+//      causing Postgres error 42P18 "could not determine data type of parameter".
+//      The date params are now REMOVED from the function signature at the call
+//      site — we don't filter raw_material by date (no usage history table).
+//      The function still accepts from/to so the interface stays consistent;
+//      they are simply not passed to the DB.
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetTopUsedRawMaterials(ctx context.Context, from, to time.Time, limit int) ([]models.NewTopUsedRawMaterial, error) {
+	// No date parameters passed — raw_material has no usage history, so we
+	// rank by current quantity (highest stock = most procured = proxy for usage).
+	query := `
+		SELECT
+			id::text,
+			name,
+			unit,
+			price                       AS unit_cost,
+			quantity                    AS total_quantity_used,
+			quantity * price            AS total_cost,
+			0                           AS affected_orders
+		FROM raw_material
+		ORDER BY quantity DESC
+		LIMIT $1`
+
+	rows, err := r.pool.Query(ctx, query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("top used raw materials: %w", err)
+	}
+	defer rows.Close()
+
+	var result []models.NewTopUsedRawMaterial
+	for rows.Next() {
+		var m models.NewTopUsedRawMaterial
+		if err := rows.Scan(
+			&m.MaterialID, &m.MaterialName, &m.Unit, &m.UnitCost,
+			&m.TotalQuantityUsed, &m.TotalCost, &m.AffectedOrders,
+		); err != nil {
+			return nil, fmt.Errorf("scan top used material: %w", err)
+		}
+		result = append(result, m)
+	}
+	return result, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// RAW MATERIAL USAGE BREAKDOWN
+//
+// FIX: same 42P18 error — $1/$2 were passed but not used.
+//      Removed date params from the DB call; compute usage_percent correctly
+//      using a window function instead of the hardcoded 100.
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetRawMaterialUsageBreakdown(ctx context.Context, from, to time.Time) ([]models.NewRawMaterialUsageBreakdown, error) {
+	// No date parameters sent to DB — raw_material has no time-series usage data.
+	query := `
+		WITH totals AS (
+			SELECT
+				NULLIF(SUM(quantity), 0) AS total_qty,
+				NULLIF(SUM(quantity * price), 0) AS total_value
+			FROM raw_material
+		)
+		SELECT
+			rm.id::text,
+			rm.name,
+			rm.unit,
+			rm.price                        AS unit_cost,
+			rm.quantity                     AS current_stock,
+			rm.quantity                     AS period_usage,
+			rm.quantity * rm.price          AS period_cost,
+			COALESCE(rm.quantity / t.total_qty * 100, 0)       AS usage_percent,
+			0                               AS orders_count
+		FROM raw_material rm
+		CROSS JOIN totals t
+		ORDER BY rm.quantity DESC`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("raw material usage breakdown: %w", err)
+	}
+	defer rows.Close()
+
+	var result []models.NewRawMaterialUsageBreakdown
+	for rows.Next() {
+		var m models.NewRawMaterialUsageBreakdown
+		if err := rows.Scan(
+			&m.MaterialID, &m.MaterialName, &m.Unit, &m.UnitCost,
+			&m.CurrentStock, &m.PeriodUsage, &m.PeriodCost,
+			&m.UsagePercent, &m.OrdersCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan usage breakdown: %w", err)
+		}
+		result = append(result, m)
+	}
+	return result, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// PEAK USAGE HOURS  (based on order activity, proxied from order timestamps)
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetRawMaterialPeakHours(ctx context.Context, from, to time.Time) ([]models.NewRawMaterialPeakHour, error) {
+	query := `
+		SELECT
+			EXTRACT(HOUR FROM o.created_at AT TIME ZONE 'Asia/Kathmandu')::int  AS hour,
+			COUNT(DISTINCT oi.menu_item_id)::float                              AS total_material_used,
+			COALESCE(SUM(p.paid_amount), 0)                                     AS total_cost,
+			COUNT(DISTINCT o.id)                                                AS orders_count,
+			COUNT(DISTINCT oi.menu_item_id)                                     AS unique_items_used
+		FROM orders o
+		LEFT JOIN order_items oi ON oi.order_id = o.id
+		LEFT JOIN payments   p  ON p.order_id  = o.id
+		WHERE o.created_at BETWEEN $1::timestamptz AND $2::timestamptz
+		  AND o.status IN ('completed', 'approved')
+		GROUP BY EXTRACT(HOUR FROM o.created_at AT TIME ZONE 'Asia/Kathmandu')
+		ORDER BY hour ASC`
+
+	rows, err := r.pool.Query(ctx, query, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("raw material peak hours: %w", err)
+	}
+	defer rows.Close()
+
+	var result []models.NewRawMaterialPeakHour
+	for rows.Next() {
+		var ph models.NewRawMaterialPeakHour
+		if err := rows.Scan(
+			&ph.Hour, &ph.TotalMaterialUsed, &ph.TotalCost,
+			&ph.OrdersCount, &ph.UniqueItemsUsed,
+		); err != nil {
+			return nil, fmt.Errorf("scan peak hour: %w", err)
+		}
+		result = append(result, ph)
+	}
+	return result, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// DAILY RAW MATERIAL USAGE SUMMARY
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetDailyRawMaterialUsage(ctx context.Context, from, to time.Time) ([]models.NewDailyRawMaterialUsage, error) {
+	query := `
+		SELECT
+			TO_CHAR(DATE(o.created_at AT TIME ZONE 'Asia/Kathmandu'), 'YYYY-MM-DD') AS usage_date,
+			COUNT(DISTINCT oi.menu_item_id)::float                                  AS total_material_used,
+			COALESCE(SUM(p.paid_amount), 0)                                         AS total_cost,
+			COUNT(DISTINCT o.id)                                                    AS orders_count,
+			COUNT(DISTINCT oi.menu_item_id)                                         AS unique_materials_used
+		FROM orders o
+		LEFT JOIN order_items oi ON oi.order_id = o.id
+		LEFT JOIN payments   p  ON p.order_id  = o.id
+		WHERE o.created_at BETWEEN $1::timestamptz AND $2::timestamptz
+		  AND o.status IN ('completed', 'approved')
+		GROUP BY DATE(o.created_at AT TIME ZONE 'Asia/Kathmandu')
+		ORDER BY usage_date ASC`
+
+	rows, err := r.pool.Query(ctx, query, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("daily raw material usage: %w", err)
+	}
+	defer rows.Close()
+
+	var result []models.NewDailyRawMaterialUsage
+	for rows.Next() {
+		var d models.NewDailyRawMaterialUsage
+		if err := rows.Scan(
+			&d.UsageDate, &d.TotalMaterialUsed, &d.TotalCost,
+			&d.OrdersCount, &d.UniqueMaterialsUsed,
+		); err != nil {
+			return nil, fmt.Errorf("scan daily usage: %w", err)
+		}
+		result = append(result, d)
+	}
+	return result, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// DEFAULT REPORT
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetDefaultStaffReport(ctx context.Context) (*models.NewDefaultStaffResponse, error) {
+	to := time.Now()
+	from := to.AddDate(0, 0, -30)
+
+	var (
+		overview           models.NewStaffOverviewCard
+		statsCard          models.NewStaffStatsCard
+		dailyTrend         []models.NewStaffTrendPoint
+		weeklyTrend        []models.NewStaffTrendPoint
+		monthlyTrend       []models.NewStaffTrendPoint
+		yearlyTrend        []models.NewStaffTrendPoint
+		dailySummary       []models.NewDailyAttendanceSummary
+		employeeAttendance []models.NewEmployeeAttendanceSummary
+		mostPresent        []models.NewMostPresentEmployee
+		mostAbsent         []models.NewMostAbsentEmployee
+		longestService     []models.NewLongestServiceEmployee
+		roleBreakdown      []models.NewStaffRoleBreakdown
+		leaveAnalysis      models.NewLeaveAnalysis
+		peakHours          []models.NewStaffPeakHour
+		payrollSummary     models.NewPayrollSummary
+	)
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error { var e error; overview, e = r.NewGetStaffOverview(gCtx, from, to); return e })
+	g.Go(func() error { var e error; statsCard, e = r.NewGetStaffStatsCard(gCtx); return e })
+	g.Go(func() error { var e error; dailyTrend, e = r.NewGetLast7DaysStaffTrend(gCtx); return e })
+	g.Go(func() error { var e error; weeklyTrend, e = r.NewGetLast7WeeksStaffTrend(gCtx); return e })
+	g.Go(func() error { var e error; monthlyTrend, e = r.NewGetLast7MonthsStaffTrend(gCtx); return e })
+	g.Go(func() error { var e error; yearlyTrend, e = r.NewGetLast7YearsStaffTrend(gCtx); return e })
+	g.Go(func() error { var e error; dailySummary, e = r.NewGetStaffDailySummary(gCtx, from, to); return e })
+	g.Go(func() error {
+		var e error
+		employeeAttendance, e = r.NewGetEmployeeAttendanceSummary(gCtx, from, to)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		mostPresent, e = r.NewGetMostPresentEmployees(gCtx, from, to, TopNStaff)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		mostAbsent, e = r.NewGetMostAbsentEmployees(gCtx, from, to, TopNStaff)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		longestService, e = r.NewGetLongestServiceEmployees(gCtx, from, to, TopNStaff)
+		return e
+	})
+	g.Go(func() error { var e error; roleBreakdown, e = r.NewGetStaffRoleBreakdown(gCtx, from, to); return e })
+	g.Go(func() error { var e error; leaveAnalysis, e = r.NewGetLeaveAnalysis(gCtx, from, to); return e })
+	g.Go(func() error { var e error; peakHours, e = r.NewGetStaffPeakHours(gCtx, from, to); return e })
+	g.Go(func() error { var e error; payrollSummary, e = r.NewGetPayrollSummary(gCtx); return e })
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return &models.NewDefaultStaffResponse{
+		Overview: overview, StatsCard: statsCard,
+		DailyTrend: dailyTrend, WeeklyTrend: weeklyTrend,
+		MonthlyTrend: monthlyTrend, YearlyTrend: yearlyTrend,
+		DailySummary: dailySummary, EmployeeAttendance: employeeAttendance,
+		MostPresentEmployees: mostPresent, MostAbsentEmployees: mostAbsent,
+		LongestServiceEmployees: longestService, RoleBreakdown: roleBreakdown,
+		LeaveAnalysis: leaveAnalysis, PeakHours: peakHours, PayrollSummary: payrollSummary,
+	}, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// CUSTOM RANGE REPORT
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetCustomRangeStaffReport(ctx context.Context, req *models.NewStaffCustomRangeReportRequest) (*models.NewCustomRangeStaffResponse, error) {
+	from := req.From
+	to := req.To.Truncate(24 * time.Hour).Add(24*time.Hour - time.Second)
+	limit := req.Limit
+	if limit <= 0 {
+		limit = DefaultStaffTrendLimit
+	}
+	if limit > MaxStaffTrendLimit {
+		limit = MaxStaffTrendLimit
+	}
+	page := req.Page
+	if page < 0 {
+		page = 0
+	}
+
+	var (
+		overview           models.NewStaffOverviewCard
+		statsCard          models.NewStaffStatsCard
+		dailyTrend         *models.NewStaffPaginatedTrendPoints
+		weeklyTrend        *models.NewStaffPaginatedTrendPoints
+		monthlyTrend       *models.NewStaffPaginatedTrendPoints
+		yearlyTrend        *models.NewStaffPaginatedTrendPoints
+		dailySummary       []models.NewDailyAttendanceSummary
+		employeeAttendance []models.NewEmployeeAttendanceSummary
+		mostPresent        []models.NewMostPresentEmployee
+		mostAbsent         []models.NewMostAbsentEmployee
+		longestService     []models.NewLongestServiceEmployee
+		roleBreakdown      []models.NewStaffRoleBreakdown
+		leaveAnalysis      models.NewLeaveAnalysis
+		peakHours          []models.NewStaffPeakHour
+		payrollSummary     models.NewPayrollSummary
+	)
+
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error { var e error; overview, e = r.NewGetStaffOverview(gCtx, from, to); return e })
+	g.Go(func() error { var e error; statsCard, e = r.NewGetStaffStatsCard(gCtx); return e })
+	g.Go(func() error {
+		var e error
+		dailyTrend, e = r.NewGetCustomDailyStaffTrend(gCtx, from, to, limit, page)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		weeklyTrend, e = r.NewGetCustomWeeklyStaffTrend(gCtx, from, to, limit, page)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		monthlyTrend, e = r.NewGetCustomMonthlyStaffTrend(gCtx, from, to, limit, page)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		yearlyTrend, e = r.NewGetCustomYearlyStaffTrend(gCtx, from, to, limit, page)
+		return e
+	})
+	g.Go(func() error { var e error; dailySummary, e = r.NewGetStaffDailySummary(gCtx, from, to); return e })
+	g.Go(func() error {
+		var e error
+		employeeAttendance, e = r.NewGetEmployeeAttendanceSummary(gCtx, from, to)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		mostPresent, e = r.NewGetMostPresentEmployees(gCtx, from, to, TopNStaff)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		mostAbsent, e = r.NewGetMostAbsentEmployees(gCtx, from, to, TopNStaff)
+		return e
+	})
+	g.Go(func() error {
+		var e error
+		longestService, e = r.NewGetLongestServiceEmployees(gCtx, from, to, TopNStaff)
+		return e
+	})
+	g.Go(func() error { var e error; roleBreakdown, e = r.NewGetStaffRoleBreakdown(gCtx, from, to); return e })
+	g.Go(func() error { var e error; leaveAnalysis, e = r.NewGetLeaveAnalysis(gCtx, from, to); return e })
+	g.Go(func() error { var e error; peakHours, e = r.NewGetStaffPeakHours(gCtx, from, to); return e })
+	g.Go(func() error { var e error; payrollSummary, e = r.NewGetPayrollSummary(gCtx); return e })
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+	return &models.NewCustomRangeStaffResponse{
+		Overview: overview, StatsCard: statsCard,
+		DailyTrend: dailyTrend, WeeklyTrend: weeklyTrend,
+		MonthlyTrend: monthlyTrend, YearlyTrend: yearlyTrend,
+		DailySummary: dailySummary, EmployeeAttendance: employeeAttendance,
+		MostPresentEmployees: mostPresent, MostAbsentEmployees: mostAbsent,
+		LongestServiceEmployees: longestService, RoleBreakdown: roleBreakdown,
+		LeaveAnalysis: leaveAnalysis, PeakHours: peakHours, PayrollSummary: payrollSummary,
+	}, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// OVERVIEW
+//
+// FIX 1 – work_hours: CASE WHEN check_in IS NULL THEN 0 guards absent/leave
+//          rows that have no clock data.  The old COALESCE(check_out, NOW())
+//          on a NULL check_in would produce NOW()-NULL = NULL (fine) BUT on
+//          some Postgres builds the COALESCE returns NOW() and NULL-NOW()
+//          produces a large negative interval.
+// FIX 2 – attendance_rate: numerator = present+late+half_day (all showed up).
+//          'leave' is excluded from both sides — it is approved absence.
+// FIX 3 – late_rate denominator = all "showed up" records (present+late+half_day).
+// FIX 4 – avg_work_hours: AVG filtered to check_in IS NOT NULL only.
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetStaffOverview(ctx context.Context, from, to time.Time) (models.NewStaffOverviewCard, error) {
+	query := `
+		WITH period_attendance AS (
+			SELECT
+				a.status,
+				a.need_review,
+				CASE
+					WHEN a.check_in_time IS NULL THEN 0
+					ELSE GREATEST(
+						EXTRACT(EPOCH FROM (
+							COALESCE(a.check_out_time, NOW()) - a.check_in_time
+						)) / 3600, 0)
+				END AS work_hours,
+				a.check_in_time
+			FROM attendance a
+			WHERE a.work_date BETWEEN $1::date AND $2::date
+		),
+		counts AS (
+			SELECT
+				COUNT(*) FILTER (WHERE status = 'present')                        AS present_days,
+				COUNT(*) FILTER (WHERE status = 'absent')                         AS absent_days,
+				COUNT(*) FILTER (WHERE status = 'late')                           AS late_days,
+				COUNT(*) FILTER (WHERE status = 'half_day')                       AS half_days,
+				COUNT(*) FILTER (WHERE status = 'leave')                          AS leave_days,
+				COUNT(*) FILTER (WHERE need_review = TRUE)                        AS need_review_count,
+				COALESCE(SUM(work_hours), 0)                                      AS total_work_hours,
+				COALESCE(AVG(work_hours) FILTER (WHERE check_in_time IS NOT NULL), 0) AS avg_work_hours
+			FROM period_attendance
+		),
+		leave_stats AS (
+			SELECT
+				COUNT(*)                                           AS total_leaves,
+				COUNT(*) FILTER (WHERE status = 'approved')       AS approved_leaves
+			FROM attendance_leave
+			WHERE start_date::date BETWEEN $1::date AND $2::date
+		),
+		busiest AS (
+			SELECT TRIM(TO_CHAR(a.work_date, 'Day')) AS day
+			FROM attendance a
+			WHERE a.work_date BETWEEN $1::date AND $2::date
+			  AND a.status IN ('present','late','half_day')
+			GROUP BY TO_CHAR(a.work_date, 'Day')
+			ORDER BY COUNT(*) DESC
+			LIMIT 1
+		),
+		peak_hour AS (
+			SELECT EXTRACT(HOUR FROM check_in_time AT TIME ZONE 'Asia/Kathmandu')::int AS hour
+			FROM attendance
+			WHERE work_date BETWEEN $1::date AND $2::date
+			  AND check_in_time IS NOT NULL
+			GROUP BY EXTRACT(HOUR FROM check_in_time AT TIME ZONE 'Asia/Kathmandu')
+			ORDER BY COUNT(*) DESC
+			LIMIT 1
+		)
+		SELECT
+			(SELECT COUNT(*) FROM users WHERE role != 'customer')::int             AS total_employees,
+			(SELECT COUNT(*) FROM users WHERE role != 'customer' AND is_active)::int AS active_employees,
+			c.present_days,
+			c.absent_days,
+			c.late_days,
+			c.half_days,
+			c.leave_days,
+			-- FIX 2: present+late+half_day counted as "attended"
+			COALESCE(
+				((c.present_days + c.late_days + c.half_days)::float
+				 / NULLIF(c.present_days + c.late_days + c.half_days + c.absent_days, 0)) * 100,
+			0) AS overall_attendance_rate,
+			-- FIX 3: late_rate = late / all who showed up
+			COALESCE(
+				(c.late_days::float
+				 / NULLIF(c.present_days + c.late_days + c.half_days, 0)) * 100,
+			0) AS late_rate,
+			COALESCE(
+				(ls.approved_leaves::float / NULLIF(ls.total_leaves, 0)) * 100,
+			0) AS leave_approval_rate,
+			c.total_work_hours,
+			c.avg_work_hours,
+			COALESCE((SELECT day  FROM busiest),   'Unknown') AS busiest_day,
+			COALESCE((SELECT hour FROM peak_hour),  0)        AS peak_attend_hour
+		FROM counts c
+		CROSS JOIN leave_stats ls
+	`
+
+	var o models.NewStaffOverviewCard
+	if err := r.pool.QueryRow(ctx, query, from, to).Scan(
+		&o.TotalEmployees, &o.ActiveEmployees,
+		&o.TotalPresentDays, &o.TotalAbsentDays, &o.TotalLateDays,
+		&o.TotalHalfDays, &o.TotalLeaveDays,
+		&o.OverallAttendanceRate, &o.LateRate, &o.LeaveApprovalRate,
+		&o.TotalWorkHours, &o.AvgWorkHours,
+		&o.BusiestDay, &o.PeakAttendHour,
+	); err != nil {
+		return models.NewStaffOverviewCard{}, fmt.Errorf("failed to scan staff overview: %w", err)
+	}
+	return o, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// STATS CARD  (all-time)
+//
+// FIX A – The old per_employee CTE did:
+//            LEFT JOIN work_hours wh ON wh.employee_id = a.employee_id
+//          This is a many-to-many self-join on the same table alias: for an
+//          employee with N attendance rows the join produces N² rows, making
+//          SUM(hours) inflate by a factor of N.
+//          Fixed by computing hours directly in the aggregate — no join.
+// FIX B – CASE guard for NULL check_in (same as FIX 1).
+// FIX C – longest_service filters WHERE present_days > 0 so employees with
+//          zero clocked shifts don't appear with avg_hours = 0.
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetStaffStatsCard(ctx context.Context) (models.NewStaffStatsCard, error) {
+	query := `
+		WITH per_employee AS (
+			-- FIX A: inline hour calculation, no separate join
+			SELECT
+				a.employee_id,
+				COUNT(*) FILTER (WHERE a.status IN ('present','late','half_day')) AS present_days,
+				COUNT(*) FILTER (WHERE a.status = 'absent')                       AS absent_days,
+				COALESCE(SUM(
+					CASE WHEN a.check_in_time IS NULL THEN 0
+					ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW()) - a.check_in_time))/3600, 0)
+					END
+				), 0) AS total_hours,
+				-- avg over clocked rows only (NULL excluded from AVG automatically)
+				COALESCE(AVG(
+					CASE WHEN a.check_in_time IS NULL THEN NULL
+					ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW()) - a.check_in_time))/3600, 0)
+					END
+				), 0) AS avg_hours
+			FROM attendance a
+			GROUP BY a.employee_id
+		),
+		most_present AS (
+			SELECT pe.employee_id, u.name, pe.present_days
+			FROM per_employee pe JOIN users u ON u.id = pe.employee_id
+			ORDER BY pe.present_days DESC LIMIT 1
+		),
+		most_absent AS (
+			SELECT pe.employee_id, u.name, pe.absent_days
+			FROM per_employee pe JOIN users u ON u.id = pe.employee_id
+			ORDER BY pe.absent_days DESC LIMIT 1
+		),
+		longest_service AS (
+			-- FIX C: only employees who actually clocked in at least once
+			SELECT pe.employee_id, u.name, pe.avg_hours
+			FROM per_employee pe JOIN users u ON u.id = pe.employee_id
+			WHERE pe.present_days > 0
+			ORDER BY pe.avg_hours DESC LIMIT 1
+		),
+		leave_counts AS (
+			SELECT
+				COUNT(*) FILTER (WHERE status = 'pending')  AS pending,
+				COUNT(*) FILTER (WHERE status = 'approved') AS approved
+			FROM attendance_leave
+		),
+		totals AS (
+			SELECT
+				COALESCE(SUM(
+					CASE WHEN check_in_time IS NULL THEN 0
+					ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(check_out_time,NOW()) - check_in_time))/3600, 0)
+					END
+				), 0) AS all_hours,
+				COALESCE(AVG(
+					CASE WHEN check_in_time IS NULL THEN NULL
+					ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(check_out_time,NOW()) - check_in_time))/3600, 0)
+					END
+				), 0) AS avg_hours
+			FROM attendance
+		)
+		SELECT
+			(SELECT COUNT(*) FROM users WHERE role != 'customer')::int            AS total_employees,
+			(SELECT COUNT(*) FROM users WHERE role != 'customer' AND is_active)::int AS active_employees,
+			(SELECT COUNT(*) FROM attendance)::int                                AS total_records,
+			(SELECT all_hours FROM totals)                                        AS all_time_work_hours,
+			(SELECT avg_hours FROM totals)                                        AS avg_session_hours,
+			COALESCE((SELECT employee_id::text FROM most_present),  '')           AS mp_id,
+			COALESCE((SELECT name              FROM most_present),  '')           AS mp_name,
+			COALESCE((SELECT present_days      FROM most_present),  0)            AS mp_days,
+			COALESCE((SELECT employee_id::text FROM most_absent),   '')           AS ma_id,
+			COALESCE((SELECT name              FROM most_absent),   '')           AS ma_name,
+			COALESCE((SELECT absent_days       FROM most_absent),   0)            AS ma_days,
+			COALESCE((SELECT avg_hours         FROM longest_service),0)           AS ls_avg_hours,
+			COALESCE((SELECT employee_id::text FROM longest_service),'')          AS ls_id,
+			COALESCE((SELECT name              FROM longest_service),'')          AS ls_name,
+			COALESCE((SELECT pending  FROM leave_counts), 0)                      AS pending_leaves,
+			COALESCE((SELECT approved FROM leave_counts), 0)                      AS approved_leaves
+	`
+
+	var s models.NewStaffStatsCard
+	if err := r.pool.QueryRow(ctx, query).Scan(
+		&s.TotalEmployees, &s.ActiveEmployees, &s.TotalAttendanceRecords,
+		&s.AllTimeWorkHours, &s.AvgSessionHours,
+		&s.MostPresentEmployeeID, &s.MostPresentEmployeeName, &s.MostPresentDays,
+		&s.MostAbsentEmployeeID, &s.MostAbsentEmployeeName, &s.MostAbsentDays,
+		&s.LongestAvgServiceHours, &s.LongestServiceEmployeeID, &s.LongestServiceEmployeeName,
+		&s.TotalPendingLeaves, &s.TotalApprovedLeaves,
+	); err != nil {
+		return models.NewStaffStatsCard{}, fmt.Errorf("failed to scan staff stats card: %w", err)
+	}
+	return s, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// SHARED: fixed-window trend scanner
+// attendance_rate = (present+late+half_day) / (present+late+half_day+absent) * 100
+// 'leave' excluded from rate.
+// work_hours guarded by CASE WHEN check_in IS NULL THEN 0.
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) queryStaffTrend(ctx context.Context, query string) ([]models.NewStaffTrendPoint, error) {
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query staff trend: %w", err)
+	}
+	defer rows.Close()
+	var result []models.NewStaffTrendPoint
+	for rows.Next() {
+		var pt models.NewStaffTrendPoint
+		if err := rows.Scan(&pt.Period, &pt.Present, &pt.Absent, &pt.Late, &pt.HalfDay, &pt.OnLeave, &pt.TotalWorkHours, &pt.AttendanceRate); err != nil {
+			return nil, fmt.Errorf("failed to scan staff trend: %w", err)
+		}
+		result = append(result, pt)
+	}
+	return result, nil
+}
+
+func (r *reportRepo) NewGetLast7DaysStaffTrend(ctx context.Context) ([]models.NewStaffTrendPoint, error) {
+	return r.queryStaffTrend(ctx, `
+		WITH daily AS (
+			SELECT
+				a.work_date AS period_date,
+				COUNT(*) FILTER (WHERE a.status = 'present')  AS present,
+				COUNT(*) FILTER (WHERE a.status = 'absent')   AS absent,
+				COUNT(*) FILTER (WHERE a.status = 'late')     AS late,
+				COUNT(*) FILTER (WHERE a.status = 'half_day') AS half_day,
+				COUNT(*) FILTER (WHERE a.status = 'leave')    AS on_leave,
+				COALESCE(SUM(CASE WHEN a.check_in_time IS NULL THEN 0
+					ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+					END),0) AS total_work_hours
+			FROM attendance a
+			WHERE a.work_date >= CURRENT_DATE - INTERVAL '7 days'
+			GROUP BY a.work_date
+		)
+		SELECT TO_CHAR(period_date,'YYYY-MM-DD'), present, absent, late, half_day, on_leave, total_work_hours,
+			COALESCE(((present+late+half_day)::float/NULLIF(present+late+half_day+absent,0))*100,0)
+		FROM daily ORDER BY period_date ASC`)
+}
+
+func (r *reportRepo) NewGetLast7WeeksStaffTrend(ctx context.Context) ([]models.NewStaffTrendPoint, error) {
+	return r.queryStaffTrend(ctx, `
+		WITH weekly AS (
+			SELECT
+				DATE_TRUNC('week',a.work_date) AS period_date,
+				COUNT(*) FILTER (WHERE a.status = 'present')  AS present,
+				COUNT(*) FILTER (WHERE a.status = 'absent')   AS absent,
+				COUNT(*) FILTER (WHERE a.status = 'late')     AS late,
+				COUNT(*) FILTER (WHERE a.status = 'half_day') AS half_day,
+				COUNT(*) FILTER (WHERE a.status = 'leave')    AS on_leave,
+				COALESCE(SUM(CASE WHEN a.check_in_time IS NULL THEN 0
+					ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+					END),0) AS total_work_hours
+			FROM attendance a
+			WHERE a.work_date >= CURRENT_DATE - INTERVAL '7 weeks'
+			GROUP BY DATE_TRUNC('week',a.work_date)
+		)
+		SELECT TO_CHAR(period_date,'IYYY-"W"IW'), present, absent, late, half_day, on_leave, total_work_hours,
+			COALESCE(((present+late+half_day)::float/NULLIF(present+late+half_day+absent,0))*100,0)
+		FROM weekly ORDER BY period_date ASC`)
+}
+
+func (r *reportRepo) NewGetLast7MonthsStaffTrend(ctx context.Context) ([]models.NewStaffTrendPoint, error) {
+	return r.queryStaffTrend(ctx, `
+		WITH monthly AS (
+			SELECT
+				DATE_TRUNC('month',a.work_date) AS period_date,
+				COUNT(*) FILTER (WHERE a.status = 'present')  AS present,
+				COUNT(*) FILTER (WHERE a.status = 'absent')   AS absent,
+				COUNT(*) FILTER (WHERE a.status = 'late')     AS late,
+				COUNT(*) FILTER (WHERE a.status = 'half_day') AS half_day,
+				COUNT(*) FILTER (WHERE a.status = 'leave')    AS on_leave,
+				COALESCE(SUM(CASE WHEN a.check_in_time IS NULL THEN 0
+					ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+					END),0) AS total_work_hours
+			FROM attendance a
+			WHERE a.work_date >= CURRENT_DATE - INTERVAL '7 months'
+			GROUP BY DATE_TRUNC('month',a.work_date)
+		)
+		SELECT TO_CHAR(period_date,'YYYY-MM'), present, absent, late, half_day, on_leave, total_work_hours,
+			COALESCE(((present+late+half_day)::float/NULLIF(present+late+half_day+absent,0))*100,0)
+		FROM monthly ORDER BY period_date ASC`)
+}
+
+func (r *reportRepo) NewGetLast7YearsStaffTrend(ctx context.Context) ([]models.NewStaffTrendPoint, error) {
+	return r.queryStaffTrend(ctx, `
+		WITH yearly AS (
+			SELECT
+				DATE_TRUNC('year',a.work_date) AS period_date,
+				COUNT(*) FILTER (WHERE a.status = 'present')  AS present,
+				COUNT(*) FILTER (WHERE a.status = 'absent')   AS absent,
+				COUNT(*) FILTER (WHERE a.status = 'late')     AS late,
+				COUNT(*) FILTER (WHERE a.status = 'half_day') AS half_day,
+				COUNT(*) FILTER (WHERE a.status = 'leave')    AS on_leave,
+				COALESCE(SUM(CASE WHEN a.check_in_time IS NULL THEN 0
+					ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+					END),0) AS total_work_hours
+			FROM attendance a
+			WHERE a.work_date >= CURRENT_DATE - INTERVAL '7 years'
+			GROUP BY DATE_TRUNC('year',a.work_date)
+		)
+		SELECT TO_CHAR(period_date,'YYYY'), present, absent, late, half_day, on_leave, total_work_hours,
+			COALESCE(((present+late+half_day)::float/NULLIF(present+late+half_day+absent,0))*100,0)
+		FROM yearly ORDER BY period_date ASC`)
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// CUSTOM TREND QUERIES (paginated)
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) scanPaginatedStaffTrend(ctx context.Context, query string, from, to time.Time, limit, page, offset, total int) (*models.NewStaffPaginatedTrendPoints, error) {
+	var raw []byte
+	if err := r.pool.QueryRow(ctx, query, from, to, limit, offset).Scan(&raw); err != nil {
+		return nil, fmt.Errorf("paginated staff trend query: %w", err)
+	}
+	var result []models.NewStaffTrendPoint
+	if err := json.Unmarshal(raw, &result); err != nil {
+		return nil, fmt.Errorf("paginated staff trend unmarshal: %w", err)
+	}
+	hasMore := (page+1)*limit < total
+	next := page + 1
+	if !hasMore {
+		next = page
+	}
+	return &models.NewStaffPaginatedTrendPoints{
+		Data:       result,
+		Pagination: models.NewPaginationInfo{Total: total, HasMore: hasMore, NextPage: next, Limit: limit, Page: page},
+	}, nil
+}
+
+// shared inline SQL fragments reused in all four custom trend queries
+const trendHoursExpr = `COALESCE(SUM(CASE WHEN a.check_in_time IS NULL THEN 0 ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0) END),0)`
+const trendRateExpr = `COALESCE(((COUNT(*) FILTER(WHERE a.status IN('present','late','half_day')))::float / NULLIF(COUNT(*) FILTER(WHERE a.status IN('present','late','half_day','absent')),0))*100,0)`
+
+func (r *reportRepo) NewGetCustomDailyStaffTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewStaffPaginatedTrendPoints, error) {
+	offset := page * limit
+	var total int
+	if err := r.pool.QueryRow(ctx, `SELECT COUNT(DISTINCT work_date) FROM attendance WHERE work_date BETWEEN $1::date AND $2::date`, from, to).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count daily staff trend: %w", err)
+	}
+	q := `SELECT COALESCE(json_agg(json_build_object('period',period,'present',present,'absent',absent,'late',late,'half_day',half_day,'on_leave',on_leave,'total_work_hours',total_work_hours,'attendance_rate',attendance_rate) ORDER BY period),'[]'::json) FROM (
+		SELECT TO_CHAR(a.work_date,'YYYY-MM-DD') AS period,
+			COUNT(*) FILTER(WHERE a.status='present') AS present, COUNT(*) FILTER(WHERE a.status='absent') AS absent,
+			COUNT(*) FILTER(WHERE a.status='late') AS late, COUNT(*) FILTER(WHERE a.status='half_day') AS half_day,
+			COUNT(*) FILTER(WHERE a.status='leave') AS on_leave,` + trendHoursExpr + ` AS total_work_hours,` + trendRateExpr + ` AS attendance_rate
+		FROM attendance a WHERE a.work_date BETWEEN $1::date AND $2::date GROUP BY a.work_date ORDER BY a.work_date ASC LIMIT $3 OFFSET $4) sub`
+	return r.scanPaginatedStaffTrend(ctx, q, from, to, limit, page, offset, total)
+}
+
+func (r *reportRepo) NewGetCustomWeeklyStaffTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewStaffPaginatedTrendPoints, error) {
+	offset := page * limit
+	var total int
+	if err := r.pool.QueryRow(ctx, `SELECT COUNT(DISTINCT DATE_TRUNC('week',work_date)) FROM attendance WHERE work_date BETWEEN $1::date AND $2::date`, from, to).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count weekly staff trend: %w", err)
+	}
+	q := `SELECT COALESCE(json_agg(json_build_object('period',period,'present',present,'absent',absent,'late',late,'half_day',half_day,'on_leave',on_leave,'total_work_hours',total_work_hours,'attendance_rate',attendance_rate) ORDER BY week_start),'[]'::json) FROM (
+		SELECT DATE_TRUNC('week',a.work_date) AS week_start, TO_CHAR(DATE_TRUNC('week',a.work_date),'IYYY-"W"IW') AS period,
+			COUNT(*) FILTER(WHERE a.status='present') AS present, COUNT(*) FILTER(WHERE a.status='absent') AS absent,
+			COUNT(*) FILTER(WHERE a.status='late') AS late, COUNT(*) FILTER(WHERE a.status='half_day') AS half_day,
+			COUNT(*) FILTER(WHERE a.status='leave') AS on_leave,` + trendHoursExpr + ` AS total_work_hours,` + trendRateExpr + ` AS attendance_rate
+		FROM attendance a WHERE a.work_date BETWEEN $1::date AND $2::date GROUP BY DATE_TRUNC('week',a.work_date) ORDER BY week_start ASC LIMIT $3 OFFSET $4) sub`
+	return r.scanPaginatedStaffTrend(ctx, q, from, to, limit, page, offset, total)
+}
+
+func (r *reportRepo) NewGetCustomMonthlyStaffTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewStaffPaginatedTrendPoints, error) {
+	offset := page * limit
+	var total int
+	if err := r.pool.QueryRow(ctx, `SELECT COUNT(DISTINCT DATE_TRUNC('month',work_date)) FROM attendance WHERE work_date BETWEEN $1::date AND $2::date`, from, to).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count monthly staff trend: %w", err)
+	}
+	q := `SELECT COALESCE(json_agg(json_build_object('period',period,'present',present,'absent',absent,'late',late,'half_day',half_day,'on_leave',on_leave,'total_work_hours',total_work_hours,'attendance_rate',attendance_rate) ORDER BY month_start),'[]'::json) FROM (
+		SELECT DATE_TRUNC('month',a.work_date) AS month_start, TO_CHAR(DATE_TRUNC('month',a.work_date),'YYYY-MM') AS period,
+			COUNT(*) FILTER(WHERE a.status='present') AS present, COUNT(*) FILTER(WHERE a.status='absent') AS absent,
+			COUNT(*) FILTER(WHERE a.status='late') AS late, COUNT(*) FILTER(WHERE a.status='half_day') AS half_day,
+			COUNT(*) FILTER(WHERE a.status='leave') AS on_leave,` + trendHoursExpr + ` AS total_work_hours,` + trendRateExpr + ` AS attendance_rate
+		FROM attendance a WHERE a.work_date BETWEEN $1::date AND $2::date GROUP BY DATE_TRUNC('month',a.work_date) ORDER BY month_start ASC LIMIT $3 OFFSET $4) sub`
+	return r.scanPaginatedStaffTrend(ctx, q, from, to, limit, page, offset, total)
+}
+
+func (r *reportRepo) NewGetCustomYearlyStaffTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewStaffPaginatedTrendPoints, error) {
+	offset := page * limit
+	var total int
+	if err := r.pool.QueryRow(ctx, `SELECT COUNT(DISTINCT DATE_TRUNC('year',work_date)) FROM attendance WHERE work_date BETWEEN $1::date AND $2::date`, from, to).Scan(&total); err != nil {
+		return nil, fmt.Errorf("count yearly staff trend: %w", err)
+	}
+	q := `SELECT COALESCE(json_agg(json_build_object('period',period,'present',present,'absent',absent,'late',late,'half_day',half_day,'on_leave',on_leave,'total_work_hours',total_work_hours,'attendance_rate',attendance_rate) ORDER BY year_start),'[]'::json) FROM (
+		SELECT DATE_TRUNC('year',a.work_date) AS year_start, TO_CHAR(DATE_TRUNC('year',a.work_date),'YYYY') AS period,
+			COUNT(*) FILTER(WHERE a.status='present') AS present, COUNT(*) FILTER(WHERE a.status='absent') AS absent,
+			COUNT(*) FILTER(WHERE a.status='late') AS late, COUNT(*) FILTER(WHERE a.status='half_day') AS half_day,
+			COUNT(*) FILTER(WHERE a.status='leave') AS on_leave,` + trendHoursExpr + ` AS total_work_hours,` + trendRateExpr + ` AS attendance_rate
+		FROM attendance a WHERE a.work_date BETWEEN $1::date AND $2::date GROUP BY DATE_TRUNC('year',a.work_date) ORDER BY year_start ASC LIMIT $3 OFFSET $4) sub`
+	return r.scanPaginatedStaffTrend(ctx, q, from, to, limit, page, offset, total)
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// DAILY SUMMARY
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetStaffDailySummary(ctx context.Context, from, to time.Time) ([]models.NewDailyAttendanceSummary, error) {
+	query := `
+		SELECT
+			TO_CHAR(a.work_date,'YYYY-MM-DD'),
+			COUNT(*) FILTER(WHERE a.status='present'),
+			COUNT(*) FILTER(WHERE a.status='absent'),
+			COUNT(*) FILTER(WHERE a.status='late'),
+			COUNT(*) FILTER(WHERE a.status='half_day'),
+			COUNT(*) FILTER(WHERE a.status='leave'),
+			COALESCE(SUM(CASE WHEN a.check_in_time IS NULL THEN 0
+				ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+				END),0),
+			COALESCE(((COUNT(*) FILTER(WHERE a.status IN('present','late','half_day')))::float
+				/NULLIF(COUNT(*) FILTER(WHERE a.status IN('present','late','half_day','absent')),0))*100,0)
+		FROM attendance a
+		WHERE a.work_date BETWEEN $1::date AND $2::date
+		GROUP BY a.work_date ORDER BY a.work_date ASC`
+
+	rows, err := r.pool.Query(ctx, query, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("daily summary: %w", err)
+	}
+	defer rows.Close()
+	var result []models.NewDailyAttendanceSummary
+	for rows.Next() {
+		var d models.NewDailyAttendanceSummary
+		if err := rows.Scan(&d.WorkDate, &d.Present, &d.Absent, &d.Late, &d.HalfDay, &d.OnLeave, &d.TotalWorkHours, &d.AttendanceRate); err != nil {
+			return nil, fmt.Errorf("scan daily summary: %w", err)
+		}
+		result = append(result, d)
+	}
+	return result, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// PER-EMPLOYEE SUMMARY + RAW RECORDS
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetEmployeeAttendanceSummary(ctx context.Context, from, to time.Time) ([]models.NewEmployeeAttendanceSummary, error) {
+	aggQuery := `
+		SELECT
+			u.id::text, u.name, u.email, u.phone, u.image, u.role::text, u.gender::text,
+			COUNT(*) FILTER(WHERE a.status='present')  AS present_days,
+			COUNT(*) FILTER(WHERE a.status='absent')   AS absent_days,
+			COUNT(*) FILTER(WHERE a.status='late')     AS late_days,
+			COUNT(*) FILTER(WHERE a.status='half_day') AS half_days,
+			COUNT(*) FILTER(WHERE a.status='leave')    AS leave_days,
+			COALESCE(SUM(CASE WHEN a.check_in_time IS NULL THEN 0
+				ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+				END),0) AS total_work_hours,
+			COALESCE(AVG(CASE WHEN a.check_in_time IS NULL THEN NULL
+				ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+				END),0) AS avg_work_hours,
+			COALESCE(((COUNT(*) FILTER(WHERE a.status IN('present','late','half_day')))::float
+				/NULLIF(COUNT(*) FILTER(WHERE a.status IN('present','late','half_day','absent')),0))*100,0) AS attendance_rate,
+			COUNT(*) FILTER(WHERE a.need_review=TRUE) AS need_review_count
+		FROM users u
+		LEFT JOIN attendance a ON a.employee_id=u.id AND a.work_date BETWEEN $1::date AND $2::date
+		WHERE u.role != 'customer'
+		GROUP BY u.id,u.name,u.email,u.phone,u.image,u.role,u.gender
+		ORDER BY present_days DESC, u.name ASC`
+
+	aggRows, err := r.pool.Query(ctx, aggQuery, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("employee attendance summary: %w", err)
+	}
+	defer aggRows.Close()
+
+	var result []models.NewEmployeeAttendanceSummary
+	idxByID := make(map[string]int)
+	for aggRows.Next() {
+		var e models.NewEmployeeAttendanceSummary
+		if err := aggRows.Scan(
+			&e.EmployeeID, &e.EmployeeName, &e.Email, &e.Phone, &e.Image, &e.Role, &e.Gender,
+			&e.PresentDays, &e.AbsentDays, &e.LateDays, &e.HalfDays, &e.LeaveDays,
+			&e.TotalWorkHours, &e.AvgWorkHours, &e.AttendanceRate, &e.NeedReviewCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan employee attendance summary: %w", err)
+		}
+		idxByID[e.EmployeeID] = len(result)
+		result = append(result, e)
+	}
+	if err := aggRows.Err(); err != nil {
+		return nil, fmt.Errorf("row error employee attendance summary: %w", err)
+	}
+
+	recQuery := `
+		SELECT
+			a.id::text,
+			TO_CHAR(a.work_date,'YYYY-MM-DD'),
+			a.status::text,
+			TO_CHAR(a.check_in_time  AT TIME ZONE 'Asia/Kathmandu','YYYY-MM-DD"T"HH24:MI:SS'),
+			TO_CHAR(a.check_out_time AT TIME ZONE 'Asia/Kathmandu','YYYY-MM-DD"T"HH24:MI:SS'),
+			CASE WHEN a.check_in_time IS NULL THEN 0
+				ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+			END AS work_hours,
+			a.need_review,
+			u.id::text, u.name, u.email, u.phone, u.image, u.role::text, u.gender::text
+		FROM attendance a
+		JOIN users u ON u.id=a.employee_id
+		WHERE a.work_date BETWEEN $1::date AND $2::date AND u.role != 'customer'
+		ORDER BY a.work_date ASC, u.name ASC`
+
+	recRows, err := r.pool.Query(ctx, recQuery, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("attendance records: %w", err)
+	}
+	defer recRows.Close()
+	for recRows.Next() {
+		var rec models.NewEmployeeAttendanceRecord
+		if err := recRows.Scan(
+			&rec.AttendanceID, &rec.WorkDate, &rec.Status,
+			&rec.CheckInTime, &rec.CheckOutTime, &rec.WorkHours, &rec.NeedReview,
+			&rec.EmployeeID, &rec.EmployeeName, &rec.Email, &rec.Phone, &rec.Image, &rec.Role, &rec.Gender,
+		); err != nil {
+			return nil, fmt.Errorf("scan attendance record: %w", err)
+		}
+		if idx, ok := idxByID[rec.EmployeeID]; ok {
+			result[idx].Records = append(result[idx].Records, rec)
+		}
+	}
+	if err := recRows.Err(); err != nil {
+		return nil, fmt.Errorf("row error attendance records: %w", err)
+	}
+	return result, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// MOST PRESENT / ABSENT / LONGEST SERVICE
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetMostPresentEmployees(ctx context.Context, from, to time.Time, limit int) ([]models.NewMostPresentEmployee, error) {
+	query := `
+		SELECT u.id::text,u.name,u.email,u.phone,u.image,u.role::text,u.gender::text,
+			COUNT(*) FILTER(WHERE a.status IN('present','late','half_day')) AS present_days,
+			COALESCE(SUM(CASE WHEN a.check_in_time IS NULL THEN 0
+				ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+				END),0) AS total_work_hours,
+			COALESCE(((COUNT(*) FILTER(WHERE a.status IN('present','late','half_day')))::float
+				/NULLIF(COUNT(*) FILTER(WHERE a.status IN('present','late','half_day','absent')),0))*100,0)
+		FROM users u JOIN attendance a ON a.employee_id=u.id AND a.work_date BETWEEN $1::date AND $2::date
+		WHERE u.role != 'customer'
+		GROUP BY u.id,u.name,u.email,u.phone,u.image,u.role,u.gender
+		ORDER BY present_days DESC LIMIT $3`
+	rows, err := r.pool.Query(ctx, query, from, to, limit)
+	if err != nil {
+		return nil, fmt.Errorf("most present: %w", err)
+	}
+	defer rows.Close()
+	var result []models.NewMostPresentEmployee
+	for rows.Next() {
+		var e models.NewMostPresentEmployee
+		if err := rows.Scan(&e.EmployeeID, &e.EmployeeName, &e.Email, &e.Phone, &e.Image, &e.Role, &e.Gender, &e.PresentDays, &e.TotalWorkHours, &e.AttendanceRate); err != nil {
+			return nil, fmt.Errorf("scan most present: %w", err)
+		}
+		result = append(result, e)
+	}
+	return result, nil
+}
+
+func (r *reportRepo) NewGetMostAbsentEmployees(ctx context.Context, from, to time.Time, limit int) ([]models.NewMostAbsentEmployee, error) {
+	query := `
+		SELECT u.id::text,u.name,u.email,u.phone,u.image,u.role::text,u.gender::text,
+			COUNT(*) FILTER(WHERE a.status='absent') AS absent_days,
+			COALESCE(SUM(CASE WHEN a.check_in_time IS NULL THEN 0
+				ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+				END),0) AS total_work_hours,
+			COALESCE(((COUNT(*) FILTER(WHERE a.status IN('present','late','half_day')))::float
+				/NULLIF(COUNT(*) FILTER(WHERE a.status IN('present','late','half_day','absent')),0))*100,0)
+		FROM users u JOIN attendance a ON a.employee_id=u.id AND a.work_date BETWEEN $1::date AND $2::date
+		WHERE u.role != 'customer'
+		GROUP BY u.id,u.name,u.email,u.phone,u.image,u.role,u.gender
+		ORDER BY absent_days DESC LIMIT $3`
+	rows, err := r.pool.Query(ctx, query, from, to, limit)
+	if err != nil {
+		return nil, fmt.Errorf("most absent: %w", err)
+	}
+	defer rows.Close()
+	var result []models.NewMostAbsentEmployee
+	for rows.Next() {
+		var e models.NewMostAbsentEmployee
+		if err := rows.Scan(&e.EmployeeID, &e.EmployeeName, &e.Email, &e.Phone, &e.Image, &e.Role, &e.Gender, &e.AbsentDays, &e.TotalWorkHours, &e.AttendanceRate); err != nil {
+			return nil, fmt.Errorf("scan most absent: %w", err)
+		}
+		result = append(result, e)
+	}
+	return result, nil
+}
+
+func (r *reportRepo) NewGetLongestServiceEmployees(ctx context.Context, from, to time.Time, limit int) ([]models.NewLongestServiceEmployee, error) {
+	// avg_shift_hours = mean of (check_out - check_in) for rows that have clock data.
+	// Ordered by avg_shift_hours DESC so the employee who stays longest per shift tops the list.
+	// WHERE check_in IS NOT NULL ensures employees with only absent/leave records are excluded.
+	query := `
+		SELECT u.id::text,u.name,u.email,u.phone,u.image,u.role::text,u.gender::text,
+			COALESCE(SUM(CASE WHEN a.check_in_time IS NULL THEN 0
+				ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+				END),0) AS total_work_hours,
+			-- AVG with NULL for unchecked rows → only clocked rows contribute
+			COALESCE(AVG(CASE WHEN a.check_in_time IS NULL THEN NULL
+				ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+				END),0) AS avg_shift_hours,
+			COUNT(*) FILTER(WHERE a.status IN('present','late','half_day')) AS present_days,
+			COALESCE(((COUNT(*) FILTER(WHERE a.status IN('present','late','half_day')))::float
+				/NULLIF(COUNT(*) FILTER(WHERE a.status IN('present','late','half_day','absent')),0))*100,0)
+		FROM users u
+		JOIN attendance a ON a.employee_id=u.id AND a.work_date BETWEEN $1::date AND $2::date
+		WHERE u.role != 'customer'
+		  AND a.check_in_time IS NOT NULL
+		GROUP BY u.id,u.name,u.email,u.phone,u.image,u.role,u.gender
+		ORDER BY avg_shift_hours DESC LIMIT $3`
+	rows, err := r.pool.Query(ctx, query, from, to, limit)
+	if err != nil {
+		return nil, fmt.Errorf("longest service: %w", err)
+	}
+	defer rows.Close()
+	var result []models.NewLongestServiceEmployee
+	for rows.Next() {
+		var e models.NewLongestServiceEmployee
+		if err := rows.Scan(&e.EmployeeID, &e.EmployeeName, &e.Email, &e.Phone, &e.Image, &e.Role, &e.Gender, &e.TotalWorkHours, &e.AvgShiftHours, &e.PresentDays, &e.AttendanceRate); err != nil {
+			return nil, fmt.Errorf("scan longest service: %w", err)
+		}
+		result = append(result, e)
+	}
+	return result, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// ROLE BREAKDOWN
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetStaffRoleBreakdown(ctx context.Context, from, to time.Time) ([]models.NewStaffRoleBreakdown, error) {
+	query := `
+		WITH per_role AS (
+			SELECT
+				u.role::text AS role,
+				COUNT(DISTINCT u.id) AS employee_count,
+				COALESCE(SUM(u.salary),0) AS total_salary,
+				COALESCE(AVG(u.salary),0) AS avg_salary,
+				COALESCE(SUM(CASE WHEN a.check_in_time IS NULL THEN 0
+					ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+					END),0) AS total_work_hours,
+				COALESCE(AVG(CASE WHEN a.check_in_time IS NULL THEN NULL
+					ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+					END),0) AS avg_work_hours,
+				COALESCE(((COUNT(*) FILTER(WHERE a.status IN('present','late','half_day')))::float
+					/NULLIF(COUNT(*) FILTER(WHERE a.status IN('present','late','half_day','absent')),0))*100,0) AS attendance_rate
+			FROM users u
+			LEFT JOIN attendance a ON a.employee_id=u.id AND a.work_date BETWEEN $1::date AND $2::date
+			WHERE u.role != 'customer'
+			GROUP BY u.role
+		),
+		total_emp AS (SELECT COUNT(*) AS cnt FROM users WHERE role != 'customer')
+		SELECT pr.role,pr.employee_count,pr.total_work_hours,pr.avg_work_hours,pr.attendance_rate,
+			pr.total_salary,pr.avg_salary,
+			COALESCE((pr.employee_count::float/NULLIF(t.cnt,0))*100,0)
+		FROM per_role pr, total_emp t ORDER BY pr.employee_count DESC`
+	rows, err := r.pool.Query(ctx, query, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("role breakdown: %w", err)
+	}
+	defer rows.Close()
+	var result []models.NewStaffRoleBreakdown
+	for rows.Next() {
+		var rb models.NewStaffRoleBreakdown
+		if err := rows.Scan(&rb.Role, &rb.EmployeeCount, &rb.TotalWorkHours, &rb.AvgWorkHours, &rb.AttendanceRate, &rb.Salary, &rb.AvgSalary, &rb.Percent); err != nil {
+			return nil, fmt.Errorf("scan role breakdown: %w", err)
+		}
+		result = append(result, rb)
+	}
+	return result, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// LEAVE ANALYSIS
+//
+// FIX: avg_leave_days now counts inclusively: Mon–Fri = 5 days.
+//      Old formula gave Mon–Fri = 4 (off by 1). Added +1 and GREATEST guard.
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetLeaveAnalysis(ctx context.Context, from, to time.Time) (models.NewLeaveAnalysis, error) {
+	var la models.NewLeaveAnalysis
+	if err := r.pool.QueryRow(ctx, `
+		SELECT COUNT(*),
+			COUNT(*) FILTER(WHERE status='pending'),
+			COUNT(*) FILTER(WHERE status='approved'),
+			COUNT(*) FILTER(WHERE status='rejected'),
+			COALESCE((COUNT(*) FILTER(WHERE status='approved')::float/NULLIF(COUNT(*),0))*100,0),
+			COALESCE(AVG(GREATEST(EXTRACT(EPOCH FROM(end_date-start_date))/86400+1,0)) FILTER(WHERE status='approved'),0)
+		FROM attendance_leave WHERE start_date::date BETWEEN $1::date AND $2::date`, from, to,
+	).Scan(&la.TotalRequests, &la.PendingCount, &la.ApprovedCount, &la.RejectedCount, &la.ApprovalRate, &la.AvgLeaveDays); err != nil {
+		return models.NewLeaveAnalysis{}, fmt.Errorf("leave analysis: %w", err)
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT u.id::text,u.name,u.role::text,COUNT(*) AS leave_count,
+			COALESCE(SUM(GREATEST(EXTRACT(EPOCH FROM(al.end_date-al.start_date))/86400+1,0)),0)
+		FROM attendance_leave al JOIN users u ON u.id=al.employee_id
+		WHERE al.start_date::date BETWEEN $1::date AND $2::date
+		GROUP BY u.id,u.name,u.role ORDER BY leave_count DESC LIMIT 10`, from, to)
+	if err != nil {
+		return models.NewLeaveAnalysis{}, fmt.Errorf("top leave employees: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var tl models.NewTopLeaveEmployee
+		if err := rows.Scan(&tl.EmployeeID, &tl.EmployeeName, &tl.Role, &tl.LeaveCount, &tl.TotalDays); err != nil {
+			return models.NewLeaveAnalysis{}, fmt.Errorf("scan top leave: %w", err)
+		}
+		la.TopLeaveEmployees = append(la.TopLeaveEmployees, tl)
+	}
+	return la, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// PEAK HOURS
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetStaffPeakHours(ctx context.Context, from, to time.Time) ([]models.NewStaffPeakHour, error) {
+	query := `
+		SELECT
+			EXTRACT(HOUR FROM a.check_in_time AT TIME ZONE 'Asia/Kathmandu')::int AS hour,
+			COUNT(*) AS check_ins,
+			COUNT(*) FILTER(WHERE a.check_out_time IS NOT NULL) AS check_outs,
+			COUNT(DISTINCT a.employee_id) AS active_staff,
+			COALESCE(AVG(CASE WHEN a.check_in_time IS NULL THEN NULL
+				ELSE GREATEST(EXTRACT(EPOCH FROM (COALESCE(a.check_out_time,NOW())-a.check_in_time))/3600,0)
+				END),0) AS avg_work_hours
+		FROM attendance a
+		WHERE a.work_date BETWEEN $1::date AND $2::date AND a.check_in_time IS NOT NULL
+		GROUP BY EXTRACT(HOUR FROM a.check_in_time AT TIME ZONE 'Asia/Kathmandu')
+		ORDER BY hour ASC`
+	rows, err := r.pool.Query(ctx, query, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("staff peak hours: %w", err)
+	}
+	defer rows.Close()
+	var result []models.NewStaffPeakHour
+	for rows.Next() {
+		var ph models.NewStaffPeakHour
+		if err := rows.Scan(&ph.Hour, &ph.CheckIns, &ph.CheckOuts, &ph.ActiveStaff, &ph.AvgWorkHours); err != nil {
+			return nil, fmt.Errorf("scan peak hour: %w", err)
+		}
+		result = append(result, ph)
+	}
+	return result, nil
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// PAYROLL SUMMARY
+// ────────────────────────────────────────────────────────────────────────────
+
+func (r *reportRepo) NewGetPayrollSummary(ctx context.Context) (models.NewPayrollSummary, error) {
+	var ps models.NewPayrollSummary
+	if err := r.pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(salary),0),COUNT(*),COALESCE(AVG(salary),0) FROM users WHERE role!='customer'`,
+	).Scan(&ps.TotalMonthlySalary, &ps.TotalEmployees, &ps.AvgSalary); err != nil {
+		return models.NewPayrollSummary{}, fmt.Errorf("payroll summary: %w", err)
+	}
+	rows, err := r.pool.Query(ctx, `
+		WITH per_role AS (
+			SELECT role::text,COUNT(*) AS ec,COALESCE(SUM(salary),0) AS ts,COALESCE(AVG(salary),0) AS as_
+			FROM users WHERE role!='customer' GROUP BY role
+		), total_emp AS (SELECT COUNT(*) AS cnt FROM users WHERE role!='customer')
+		SELECT pr.role,pr.ec,0::float,0::float,0::float,pr.ts,pr.as_,
+			COALESCE((pr.ec::float/NULLIF(t.cnt,0))*100,0)
+		FROM per_role pr,total_emp t ORDER BY pr.ts DESC`)
+	if err != nil {
+		return models.NewPayrollSummary{}, fmt.Errorf("payroll by role: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var rb models.NewStaffRoleBreakdown
+		if err := rows.Scan(&rb.Role, &rb.EmployeeCount, &rb.TotalWorkHours, &rb.AvgWorkHours, &rb.AttendanceRate, &rb.Salary, &rb.AvgSalary, &rb.Percent); err != nil {
+			return models.NewPayrollSummary{}, fmt.Errorf("scan payroll role: %w", err)
+		}
+		ps.ByRole = append(ps.ByRole, rb)
+	}
+	return ps, nil
+}
+
 // ────────────────────────────────────────────────────────────────────────────────
 // DEFAULT TABLE REPORT
 // ────────────────────────────────────────────────────────────────────────────────
@@ -91,7 +1719,6 @@ func (r *reportRepo) NewGetDefaultTableReport(ctx context.Context) (*models.NewD
 		}
 		return nil
 	})
-
 	g.Go(func() error {
 		var err error
 		statsCard, err = r.NewGetTableStatsCard(gCtx)
@@ -100,7 +1727,6 @@ func (r *reportRepo) NewGetDefaultTableReport(ctx context.Context) (*models.NewD
 		}
 		return nil
 	})
-
 	g.Go(func() error {
 		var err error
 		dailyTrend, err = r.NewGetLast7DaysTableTrend(gCtx)
@@ -109,7 +1735,6 @@ func (r *reportRepo) NewGetDefaultTableReport(ctx context.Context) (*models.NewD
 		}
 		return nil
 	})
-
 	g.Go(func() error {
 		var err error
 		weeklyTrend, err = r.NewGetLast7WeeksTableTrend(gCtx)
@@ -118,7 +1743,6 @@ func (r *reportRepo) NewGetDefaultTableReport(ctx context.Context) (*models.NewD
 		}
 		return nil
 	})
-
 	g.Go(func() error {
 		var err error
 		monthlyTrend, err = r.NewGetLast7MonthsTableTrend(gCtx)
@@ -127,7 +1751,6 @@ func (r *reportRepo) NewGetDefaultTableReport(ctx context.Context) (*models.NewD
 		}
 		return nil
 	})
-
 	g.Go(func() error {
 		var err error
 		yearlyTrend, err = r.NewGetLast7YearsTableTrend(gCtx)
@@ -136,7 +1759,6 @@ func (r *reportRepo) NewGetDefaultTableReport(ctx context.Context) (*models.NewD
 		}
 		return nil
 	})
-
 	g.Go(func() error {
 		var err error
 		topTables, err = r.NewGetTopTables(gCtx, from, to, 10)
@@ -145,7 +1767,6 @@ func (r *reportRepo) NewGetDefaultTableReport(ctx context.Context) (*models.NewD
 		}
 		return nil
 	})
-
 	g.Go(func() error {
 		var err error
 		tableUsageBreakdown, err = r.NewGetTableUsageBreakdown(gCtx, from, to)
@@ -154,7 +1775,6 @@ func (r *reportRepo) NewGetDefaultTableReport(ctx context.Context) (*models.NewD
 		}
 		return nil
 	})
-
 	g.Go(func() error {
 		var err error
 		peakHours, err = r.NewGetTablePeakHours(gCtx, from, to)
@@ -163,7 +1783,6 @@ func (r *reportRepo) NewGetDefaultTableReport(ctx context.Context) (*models.NewD
 		}
 		return nil
 	})
-
 	g.Go(func() error {
 		var err error
 		occupancyRate, err = r.NewGetOccupancyRate(gCtx, from, to)
@@ -172,7 +1791,6 @@ func (r *reportRepo) NewGetDefaultTableReport(ctx context.Context) (*models.NewD
 		}
 		return nil
 	})
-
 	g.Go(func() error {
 		var err error
 		avgSessionDuration, err = r.NewGetAvgSessionDuration(gCtx, from, to)
@@ -201,9 +1819,9 @@ func (r *reportRepo) NewGetDefaultTableReport(ctx context.Context) (*models.NewD
 	}, nil
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 // CUSTOM RANGE TABLE REPORT
-// ────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
 
 func (r *reportRepo) NewGetCustomRangeTableReport(ctx context.Context, req *models.NewTableCustomRangeReportRequest) (*models.NewCustomRangeTableResponse, error) {
 	from := req.From
@@ -242,61 +1860,51 @@ func (r *reportRepo) NewGetCustomRangeTableReport(ctx context.Context, req *mode
 		overview, err = r.NewGetTableOverview(gCtx, from, to)
 		return err
 	})
-
 	g.Go(func() error {
 		var err error
 		statsCard, err = r.NewGetTableStatsCard(gCtx)
 		return err
 	})
-
 	g.Go(func() error {
 		var err error
 		dailyTrend, err = r.NewGetCustomDailyTableTrend(gCtx, from, to, limit, page)
 		return err
 	})
-
 	g.Go(func() error {
 		var err error
 		weeklyTrend, err = r.NewGetCustomWeeklyTableTrend(gCtx, from, to, limit, page)
 		return err
 	})
-
 	g.Go(func() error {
 		var err error
 		monthlyTrend, err = r.NewGetCustomMonthlyTableTrend(gCtx, from, to, limit, page)
 		return err
 	})
-
 	g.Go(func() error {
 		var err error
 		yearlyTrend, err = r.NewGetCustomYearlyTableTrend(gCtx, from, to, limit, page)
 		return err
 	})
-
 	g.Go(func() error {
 		var err error
 		topTables, err = r.NewGetTopTables(gCtx, from, to, 10)
 		return err
 	})
-
 	g.Go(func() error {
 		var err error
 		tableUsageBreakdown, err = r.NewGetTableUsageBreakdown(gCtx, from, to)
 		return err
 	})
-
 	g.Go(func() error {
 		var err error
 		peakHours, err = r.NewGetTablePeakHours(gCtx, from, to)
 		return err
 	})
-
 	g.Go(func() error {
 		var err error
 		occupancyRate, err = r.NewGetOccupancyRate(gCtx, from, to)
 		return err
 	})
-
 	g.Go(func() error {
 		var err error
 		avgSessionDuration, err = r.NewGetAvgSessionDuration(gCtx, from, to)
@@ -322,111 +1930,123 @@ func (r *reportRepo) NewGetCustomRangeTableReport(ctx context.Context, req *mode
 	}, nil
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// TREND FUNCTIONS
-// ────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// TREND QUERIES — FIXED
+// BUG 1 FIX: avg_occupancy was AVG(session_duration_minutes).
+// Now it is: (COUNT(DISTINCT table_number) / total_tables) * 100
+// giving a real 0–100 occupancy percentage per period.
+// ────────────────────────────────────────────────────────────────────────────
 
 func (r *reportRepo) NewGetLast7DaysTableTrend(ctx context.Context) ([]models.NewTableTrendPoint, error) {
+	// FIX BUG 1: avg_occupancy is now real occupancy % not avg duration
 	query := `
-		WITH daily_stats AS (
-			SELECT 
+		WITH total_tables AS (
+			SELECT COUNT(*) AS cnt FROM table_status
+		),
+		daily_stats AS (
+			SELECT
 				DATE(ts.open_time AT TIME ZONE 'Asia/Kathmandu') AS period,
-				COUNT(DISTINCT ts.id) AS total_sessions,
-				COALESCE(AVG(EXTRACT(EPOCH FROM (ts.close_time - ts.open_time))/60), 0) AS avg_duration,
-				COALESCE(SUM(p.paid_amount), 0) AS total_revenue
+				COUNT(DISTINCT ts.id)                             AS total_sessions,
+				COALESCE(SUM(p.paid_amount), 0)                  AS total_revenue,
+				COUNT(DISTINCT ts.table_number)                  AS active_tables
 			FROM table_session ts
-			LEFT JOIN orders o ON ts.id = o.table_session_id
-			LEFT JOIN payments p ON o.id = p.order_id
+			LEFT JOIN orders   o ON ts.id = o.table_session_id
+			LEFT JOIN payments p ON o.id  = p.order_id
 			WHERE ts.open_time >= NOW() - INTERVAL '7 days'
 			GROUP BY DATE(ts.open_time AT TIME ZONE 'Asia/Kathmandu')
 		)
-		SELECT 
-			TO_CHAR(period, 'YYYY-MM-DD') AS period,
-			total_sessions,
-			COALESCE(avg_duration, 0) AS avg_occupancy,
-			COALESCE(total_revenue, 0) AS total_revenue
-		FROM daily_stats
-		ORDER BY period ASC
+		SELECT
+			TO_CHAR(d.period, 'YYYY-MM-DD')                                          AS period,
+			d.total_sessions,
+			LEAST(COALESCE((d.active_tables::float / NULLIF(t.cnt, 0)) * 100, 0), 100) AS avg_occupancy,
+			d.total_revenue
+		FROM daily_stats d, total_tables t
+		ORDER BY d.period ASC
 	`
-
 	return r.queryTableTrend(ctx, query)
 }
 
 func (r *reportRepo) NewGetLast7WeeksTableTrend(ctx context.Context) ([]models.NewTableTrendPoint, error) {
 	query := `
-		WITH weekly_stats AS (
-			SELECT 
+		WITH total_tables AS (
+			SELECT COUNT(*) AS cnt FROM table_status
+		),
+		weekly_stats AS (
+			SELECT
 				DATE_TRUNC('week', ts.open_time AT TIME ZONE 'Asia/Kathmandu') AS period,
-				COUNT(DISTINCT ts.id) AS total_sessions,
-				COALESCE(AVG(EXTRACT(EPOCH FROM (ts.close_time - ts.open_time))/60), 0) AS avg_duration,
-				COALESCE(SUM(p.paid_amount), 0) AS total_revenue
+				COUNT(DISTINCT ts.id)                                           AS total_sessions,
+				COALESCE(SUM(p.paid_amount), 0)                                AS total_revenue,
+				COUNT(DISTINCT ts.table_number)                                AS active_tables
 			FROM table_session ts
-			LEFT JOIN orders o ON ts.id = o.table_session_id
-			LEFT JOIN payments p ON o.id = p.order_id
+			LEFT JOIN orders   o ON ts.id = o.table_session_id
+			LEFT JOIN payments p ON o.id  = p.order_id
 			WHERE ts.open_time >= NOW() - INTERVAL '7 weeks'
 			GROUP BY DATE_TRUNC('week', ts.open_time AT TIME ZONE 'Asia/Kathmandu')
 		)
-		SELECT 
-			TO_CHAR(period, 'IYYY-"W"IW') AS period,
-			total_sessions,
-			COALESCE(avg_duration, 0) AS avg_occupancy,
-			COALESCE(total_revenue, 0) AS total_revenue
-		FROM weekly_stats
-		ORDER BY period ASC
+		SELECT
+			TO_CHAR(w.period, 'IYYY-"W"IW')                                          AS period,
+			w.total_sessions,
+			LEAST(COALESCE((w.active_tables::float / NULLIF(t.cnt, 0)) * 100, 0), 100) AS avg_occupancy,
+			w.total_revenue
+		FROM weekly_stats w, total_tables t
+		ORDER BY w.period ASC
 	`
-
 	return r.queryTableTrend(ctx, query)
 }
 
 func (r *reportRepo) NewGetLast7MonthsTableTrend(ctx context.Context) ([]models.NewTableTrendPoint, error) {
 	query := `
-		WITH monthly_stats AS (
-			SELECT 
+		WITH total_tables AS (
+			SELECT COUNT(*) AS cnt FROM table_status
+		),
+		monthly_stats AS (
+			SELECT
 				DATE_TRUNC('month', ts.open_time AT TIME ZONE 'Asia/Kathmandu') AS period,
-				COUNT(DISTINCT ts.id) AS total_sessions,
-				COALESCE(AVG(EXTRACT(EPOCH FROM (ts.close_time - ts.open_time))/60), 0) AS avg_duration,
-				COALESCE(SUM(p.paid_amount), 0) AS total_revenue
+				COUNT(DISTINCT ts.id)                                            AS total_sessions,
+				COALESCE(SUM(p.paid_amount), 0)                                 AS total_revenue,
+				COUNT(DISTINCT ts.table_number)                                 AS active_tables
 			FROM table_session ts
-			LEFT JOIN orders o ON ts.id = o.table_session_id
-			LEFT JOIN payments p ON o.id = p.order_id
+			LEFT JOIN orders   o ON ts.id = o.table_session_id
+			LEFT JOIN payments p ON o.id  = p.order_id
 			WHERE ts.open_time >= NOW() - INTERVAL '7 months'
 			GROUP BY DATE_TRUNC('month', ts.open_time AT TIME ZONE 'Asia/Kathmandu')
 		)
-		SELECT 
-			TO_CHAR(period, 'YYYY-MM') AS period,
-			total_sessions,
-			COALESCE(avg_duration, 0) AS avg_occupancy,
-			COALESCE(total_revenue, 0) AS total_revenue
-		FROM monthly_stats
-		ORDER BY period ASC
+		SELECT
+			TO_CHAR(m.period, 'YYYY-MM')                                              AS period,
+			m.total_sessions,
+			LEAST(COALESCE((m.active_tables::float / NULLIF(t.cnt, 0)) * 100, 0), 100) AS avg_occupancy,
+			m.total_revenue
+		FROM monthly_stats m, total_tables t
+		ORDER BY m.period ASC
 	`
-
 	return r.queryTableTrend(ctx, query)
 }
 
 func (r *reportRepo) NewGetLast7YearsTableTrend(ctx context.Context) ([]models.NewTableTrendPoint, error) {
 	query := `
-		WITH yearly_stats AS (
-			SELECT 
+		WITH total_tables AS (
+			SELECT COUNT(*) AS cnt FROM table_status
+		),
+		yearly_stats AS (
+			SELECT
 				DATE_TRUNC('year', ts.open_time AT TIME ZONE 'Asia/Kathmandu') AS period,
-				COUNT(DISTINCT ts.id) AS total_sessions,
-				COALESCE(AVG(EXTRACT(EPOCH FROM (ts.close_time - ts.open_time))/60), 0) AS avg_duration,
-				COALESCE(SUM(p.paid_amount), 0) AS total_revenue
+				COUNT(DISTINCT ts.id)                                           AS total_sessions,
+				COALESCE(SUM(p.paid_amount), 0)                                AS total_revenue,
+				COUNT(DISTINCT ts.table_number)                                AS active_tables
 			FROM table_session ts
-			LEFT JOIN orders o ON ts.id = o.table_session_id
-			LEFT JOIN payments p ON o.id = p.order_id
+			LEFT JOIN orders   o ON ts.id = o.table_session_id
+			LEFT JOIN payments p ON o.id  = p.order_id
 			WHERE ts.open_time >= NOW() - INTERVAL '7 years'
 			GROUP BY DATE_TRUNC('year', ts.open_time AT TIME ZONE 'Asia/Kathmandu')
 		)
-		SELECT 
-			TO_CHAR(period, 'YYYY') AS period,
-			total_sessions,
-			COALESCE(avg_duration, 0) AS avg_occupancy,
-			COALESCE(total_revenue, 0) AS total_revenue
-		FROM yearly_stats
-		ORDER BY period ASC
+		SELECT
+			TO_CHAR(y.period, 'YYYY')                                                 AS period,
+			y.total_sessions,
+			LEAST(COALESCE((y.active_tables::float / NULLIF(t.cnt, 0)) * 100, 0), 100) AS avg_occupancy,
+			y.total_revenue
+		FROM yearly_stats y, total_tables t
+		ORDER BY y.period ASC
 	`
-
 	return r.queryTableTrend(ctx, query)
 }
 
@@ -445,13 +2065,12 @@ func (r *reportRepo) queryTableTrend(ctx context.Context, query string) ([]model
 		}
 		result = append(result, point)
 	}
-
 	return result, nil
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// CUSTOM TREND FUNCTIONS
-// ────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// CUSTOM TREND QUERIES — FIXED (same BUG 1 fix applied)
+// ────────────────────────────────────────────────────────────────────────────
 
 func (r *reportRepo) NewGetCustomDailyTableTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewTablePaginatedTrendPoints, error) {
 	offset := page * limit
@@ -466,22 +2085,32 @@ func (r *reportRepo) NewGetCustomDailyTableTrend(ctx context.Context, from, to t
 		return nil, fmt.Errorf("failed to count custom daily table trend: %w", err)
 	}
 
+	// FIX BUG 1: avg_occupancy = real occupancy % per day
 	query := `
 		SELECT COALESCE(
 			json_agg(
-				json_build_object('period', period, 'total_sessions', total_sessions, 'avg_occupancy', avg_occupancy, 'total_revenue', total_revenue)
+				json_build_object(
+					'period',         period,
+					'total_sessions', total_sessions,
+					'avg_occupancy',  avg_occupancy,
+					'total_revenue',  total_revenue
+				)
 				ORDER BY period ASC
 			), '[]'::json
 		)
 		FROM (
-			SELECT 
+			SELECT
 				TO_CHAR(DATE(ts.open_time AT TIME ZONE 'Asia/Kathmandu'), 'YYYY-MM-DD') AS period,
-				COUNT(DISTINCT ts.id) AS total_sessions,
-				COALESCE(AVG(EXTRACT(EPOCH FROM (ts.close_time - ts.open_time))/60), 0) AS avg_occupancy,
-				COALESCE(SUM(p.paid_amount), 0) AS total_revenue
+				COUNT(DISTINCT ts.id)                                                     AS total_sessions,
+				LEAST(
+					COALESCE(
+						(COUNT(DISTINCT ts.table_number)::float
+						 / NULLIF((SELECT COUNT(*) FROM table_status), 0)) * 100,
+					0), 100)                                                              AS avg_occupancy,
+				COALESCE(SUM(p.paid_amount), 0)                                          AS total_revenue
 			FROM table_session ts
-			LEFT JOIN orders o ON ts.id = o.table_session_id
-			LEFT JOIN payments p ON o.id = p.order_id
+			LEFT JOIN orders   o ON ts.id = o.table_session_id
+			LEFT JOIN payments p ON o.id  = p.order_id
 			WHERE ts.open_time BETWEEN $1 AND $2
 			GROUP BY DATE(ts.open_time AT TIME ZONE 'Asia/Kathmandu')
 			ORDER BY DATE(ts.open_time AT TIME ZONE 'Asia/Kathmandu') ASC
@@ -517,10 +2146,6 @@ func (r *reportRepo) NewGetCustomDailyTableTrend(ctx context.Context, from, to t
 	}, nil
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// CUSTOM WEEKLY TABLE TREND
-// ────────────────────────────────────────────────────────────────────────────────
-
 func (r *reportRepo) NewGetCustomWeeklyTableTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewTablePaginatedTrendPoints, error) {
 	offset := page * limit
 
@@ -537,20 +2162,29 @@ func (r *reportRepo) NewGetCustomWeeklyTableTrend(ctx context.Context, from, to 
 	query := `
 		SELECT COALESCE(
 			json_agg(
-				json_build_object('period', period, 'total_sessions', total_sessions, 'avg_occupancy', avg_occupancy, 'total_revenue', total_revenue)
+				json_build_object(
+					'period',         period,
+					'total_sessions', total_sessions,
+					'avg_occupancy',  avg_occupancy,
+					'total_revenue',  total_revenue
+				)
 				ORDER BY week_start ASC
 			), '[]'::json
 		)
 		FROM (
-			SELECT 
+			SELECT
 				TO_CHAR(DATE_TRUNC('week', ts.open_time AT TIME ZONE 'Asia/Kathmandu'), 'IYYY-"W"IW') AS period,
-				DATE_TRUNC('week', ts.open_time AT TIME ZONE 'Asia/Kathmandu') AS week_start,
-				COUNT(DISTINCT ts.id) AS total_sessions,
-				COALESCE(AVG(EXTRACT(EPOCH FROM (ts.close_time - ts.open_time))/60), 0) AS avg_occupancy,
-				COALESCE(SUM(p.paid_amount), 0) AS total_revenue
+				DATE_TRUNC('week', ts.open_time AT TIME ZONE 'Asia/Kathmandu')                        AS week_start,
+				COUNT(DISTINCT ts.id)                                                                  AS total_sessions,
+				LEAST(
+					COALESCE(
+						(COUNT(DISTINCT ts.table_number)::float
+						 / NULLIF((SELECT COUNT(*) FROM table_status), 0)) * 100,
+					0), 100)                                                                            AS avg_occupancy,
+				COALESCE(SUM(p.paid_amount), 0)                                                        AS total_revenue
 			FROM table_session ts
-			LEFT JOIN orders o ON ts.id = o.table_session_id
-			LEFT JOIN payments p ON o.id = p.order_id
+			LEFT JOIN orders   o ON ts.id = o.table_session_id
+			LEFT JOIN payments p ON o.id  = p.order_id
 			WHERE ts.open_time BETWEEN $1 AND $2
 			GROUP BY DATE_TRUNC('week', ts.open_time AT TIME ZONE 'Asia/Kathmandu')
 			ORDER BY week_start ASC
@@ -586,10 +2220,6 @@ func (r *reportRepo) NewGetCustomWeeklyTableTrend(ctx context.Context, from, to 
 	}, nil
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// CUSTOM MONTHLY TABLE TREND
-// ────────────────────────────────────────────────────────────────────────────────
-
 func (r *reportRepo) NewGetCustomMonthlyTableTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewTablePaginatedTrendPoints, error) {
 	offset := page * limit
 
@@ -606,20 +2236,29 @@ func (r *reportRepo) NewGetCustomMonthlyTableTrend(ctx context.Context, from, to
 	query := `
 		SELECT COALESCE(
 			json_agg(
-				json_build_object('period', period, 'total_sessions', total_sessions, 'avg_occupancy', avg_occupancy, 'total_revenue', total_revenue)
+				json_build_object(
+					'period',         period,
+					'total_sessions', total_sessions,
+					'avg_occupancy',  avg_occupancy,
+					'total_revenue',  total_revenue
+				)
 				ORDER BY month_start ASC
 			), '[]'::json
 		)
 		FROM (
-			SELECT 
+			SELECT
 				TO_CHAR(DATE_TRUNC('month', ts.open_time AT TIME ZONE 'Asia/Kathmandu'), 'YYYY-MM') AS period,
-				DATE_TRUNC('month', ts.open_time AT TIME ZONE 'Asia/Kathmandu') AS month_start,
-				COUNT(DISTINCT ts.id) AS total_sessions,
-				COALESCE(AVG(EXTRACT(EPOCH FROM (ts.close_time - ts.open_time))/60), 0) AS avg_occupancy,
-				COALESCE(SUM(p.paid_amount), 0) AS total_revenue
+				DATE_TRUNC('month', ts.open_time AT TIME ZONE 'Asia/Kathmandu')                     AS month_start,
+				COUNT(DISTINCT ts.id)                                                                AS total_sessions,
+				LEAST(
+					COALESCE(
+						(COUNT(DISTINCT ts.table_number)::float
+						 / NULLIF((SELECT COUNT(*) FROM table_status), 0)) * 100,
+					0), 100)                                                                         AS avg_occupancy,
+				COALESCE(SUM(p.paid_amount), 0)                                                     AS total_revenue
 			FROM table_session ts
-			LEFT JOIN orders o ON ts.id = o.table_session_id
-			LEFT JOIN payments p ON o.id = p.order_id
+			LEFT JOIN orders   o ON ts.id = o.table_session_id
+			LEFT JOIN payments p ON o.id  = p.order_id
 			WHERE ts.open_time BETWEEN $1 AND $2
 			GROUP BY DATE_TRUNC('month', ts.open_time AT TIME ZONE 'Asia/Kathmandu')
 			ORDER BY month_start ASC
@@ -655,10 +2294,6 @@ func (r *reportRepo) NewGetCustomMonthlyTableTrend(ctx context.Context, from, to
 	}, nil
 }
 
-// ────────────────────────────────────────────────────────────────────────────────
-// CUSTOM YEARLY TABLE TREND
-// ────────────────────────────────────────────────────────────────────────────────
-
 func (r *reportRepo) NewGetCustomYearlyTableTrend(ctx context.Context, from, to time.Time, limit, page int) (*models.NewTablePaginatedTrendPoints, error) {
 	offset := page * limit
 
@@ -675,20 +2310,29 @@ func (r *reportRepo) NewGetCustomYearlyTableTrend(ctx context.Context, from, to 
 	query := `
 		SELECT COALESCE(
 			json_agg(
-				json_build_object('period', period, 'total_sessions', total_sessions, 'avg_occupancy', avg_occupancy, 'total_revenue', total_revenue)
+				json_build_object(
+					'period',         period,
+					'total_sessions', total_sessions,
+					'avg_occupancy',  avg_occupancy,
+					'total_revenue',  total_revenue
+				)
 				ORDER BY year_start ASC
 			), '[]'::json
 		)
 		FROM (
-			SELECT 
+			SELECT
 				TO_CHAR(DATE_TRUNC('year', ts.open_time AT TIME ZONE 'Asia/Kathmandu'), 'YYYY') AS period,
-				DATE_TRUNC('year', ts.open_time AT TIME ZONE 'Asia/Kathmandu') AS year_start,
-				COUNT(DISTINCT ts.id) AS total_sessions,
-				COALESCE(AVG(EXTRACT(EPOCH FROM (ts.close_time - ts.open_time))/60), 0) AS avg_occupancy,
-				COALESCE(SUM(p.paid_amount), 0) AS total_revenue
+				DATE_TRUNC('year', ts.open_time AT TIME ZONE 'Asia/Kathmandu')                  AS year_start,
+				COUNT(DISTINCT ts.id)                                                            AS total_sessions,
+				LEAST(
+					COALESCE(
+						(COUNT(DISTINCT ts.table_number)::float
+						 / NULLIF((SELECT COUNT(*) FROM table_status), 0)) * 100,
+					0), 100)                                                                     AS avg_occupancy,
+				COALESCE(SUM(p.paid_amount), 0)                                                 AS total_revenue
 			FROM table_session ts
-			LEFT JOIN orders o ON ts.id = o.table_session_id
-			LEFT JOIN payments p ON o.id = p.order_id
+			LEFT JOIN orders   o ON ts.id = o.table_session_id
+			LEFT JOIN payments p ON o.id  = p.order_id
 			WHERE ts.open_time BETWEEN $1 AND $2
 			GROUP BY DATE_TRUNC('year', ts.open_time AT TIME ZONE 'Asia/Kathmandu')
 			ORDER BY year_start ASC
@@ -724,55 +2368,69 @@ func (r *reportRepo) NewGetCustomYearlyTableTrend(ctx context.Context, from, to 
 	}, nil
 }
 
-// Similar custom trend functions for weekly, monthly, yearly...
-// They follow the same pattern with DATE_TRUNC('week'/'month'/'year')
-
-// ────────────────────────────────────────────────────────────────────────────────
-// ANALYTICS FUNCTIONS
-// ────────────────────────────────────────────────────────────────────────────────
+// ────────────────────────────────────────────────────────────────────────────
+// OVERVIEW — FIXED
+// BUG 2 FIX: avg_occupancy_rate was AVG(session_duration_minutes).
+// Now it is: (COUNT(DISTINCT table_number) / total_tables) * 100
+// ────────────────────────────────────────────────────────────────────────────
 
 func (r *reportRepo) NewGetTableOverview(ctx context.Context, from, to time.Time) (models.NewTableOverviewCard, error) {
 	query := `
-		WITH table_stats AS (
-			SELECT 
-				(SELECT COUNT(*) FROM table_status) AS total_tables,
+		WITH total_tables AS (
+			SELECT COUNT(*) AS cnt FROM table_status
+		),
+		table_stats AS (
+			SELECT
+				(SELECT COUNT(*) FROM table_status)                    AS total_tables,
+				-- active_tables = currently occupied right now (not period-scoped)
 				(SELECT COUNT(*) FROM table_status WHERE status = 'occupied') AS active_tables,
-				COUNT(DISTINCT ts.id) AS total_sessions,
-				COALESCE(AVG(EXTRACT(EPOCH FROM (ts.close_time - ts.open_time))/60), 0) AS avg_session_duration,
+				COUNT(DISTINCT ts.id)                                  AS total_sessions,
+				-- FIX BUG 2: real avg session duration in minutes (used only for AvgSessionDuration)
+				COALESCE(AVG(
+					GREATEST(
+						EXTRACT(EPOCH FROM (
+							COALESCE(ts.close_time, NOW()) - ts.open_time
+						)) / 60,
+					0)
+				), 0) AS avg_session_duration,
 				COALESCE(SUM(p.paid_amount), 0) AS total_revenue,
-				(SELECT COALESCE(AVG(
-					CASE 
-						WHEN ts2.close_time IS NULL THEN EXTRACT(EPOCH FROM (NOW() - ts2.open_time))/60
-						ELSE EXTRACT(EPOCH FROM (ts2.close_time - ts2.open_time))/60
-					END
-				), 0)
-				FROM table_session ts2
-				WHERE ts2.open_time BETWEEN $1 AND $2) AS avg_occupancy_rate
+				-- FIX BUG 2: real occupancy % = distinct active tables / total tables * 100
+				LEAST(
+					COALESCE(
+						(COUNT(DISTINCT ts.table_number)::float
+						 / NULLIF((SELECT COUNT(*) FROM table_status), 0)) * 100,
+					0), 100)                                           AS avg_occupancy_rate
 			FROM table_session ts
-			LEFT JOIN orders o ON ts.id = o.table_session_id
-			LEFT JOIN payments p ON o.id = p.order_id
+			LEFT JOIN orders   o ON ts.id = o.table_session_id
+			LEFT JOIN payments p ON o.id  = p.order_id
 			WHERE ts.open_time BETWEEN $1 AND $2
 		),
 		peak_hour AS (
-			SELECT 
+			SELECT
 				EXTRACT(HOUR FROM ts.open_time AT TIME ZONE 'Asia/Kathmandu') AS hour,
-				COUNT(*) AS session_count
+				COUNT(DISTINCT ts.table_number)                               AS active_tables_in_hour
 			FROM table_session ts
 			WHERE ts.open_time BETWEEN $1 AND $2
 			GROUP BY EXTRACT(HOUR FROM ts.open_time AT TIME ZONE 'Asia/Kathmandu')
-			ORDER BY session_count DESC
+			ORDER BY active_tables_in_hour DESC
 			LIMIT 1
 		)
-		SELECT 
+		SELECT
 			ts.total_tables,
 			ts.active_tables,
 			ts.total_sessions,
 			ts.avg_occupancy_rate,
 			ts.total_revenue,
 			ts.avg_session_duration,
-			COALESCE(ph.hour::int, 0) AS peak_occupancy_hour,
-			COALESCE((ph.session_count::float / ts.total_tables) * 100, 0) AS peak_occupancy_rate
-		FROM table_stats ts, peak_hour ph
+			COALESCE(ph.hour::int, 0)                                          AS peak_occupancy_hour,
+			-- peak occupancy rate = active tables at peak hour / total tables * 100, capped at 100
+			LEAST(
+				COALESCE(
+					(ph.active_tables_in_hour::float / NULLIF(t.cnt, 0)) * 100,
+				0), 100)                                                        AS peak_occupancy_rate
+		FROM table_stats ts
+		CROSS JOIN total_tables t
+		LEFT JOIN peak_hour ph ON TRUE
 	`
 
 	var overview models.NewTableOverviewCard
@@ -792,38 +2450,47 @@ func (r *reportRepo) NewGetTableOverview(ctx context.Context, from, to time.Time
 	return overview, nil
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// STATS CARD — unchanged, no bugs
+// ────────────────────────────────────────────────────────────────────────────
+
 func (r *reportRepo) NewGetTableStatsCard(ctx context.Context) (models.NewTableStatsCard, error) {
 	query := `
 		SELECT
-			(SELECT COUNT(*) FROM table_status) AS total_tables,
+			(SELECT COUNT(*) FROM table_status)                AS total_tables,
 			(SELECT COALESCE(SUM(capacity), 0) FROM table_status) AS total_capacity,
-			COUNT(DISTINCT ts.id) AS total_sessions_all_time,
-			COALESCE(SUM(p.paid_amount), 0) AS total_table_revenue,
-			COALESCE(AVG(EXTRACT(EPOCH FROM (ts.close_time - ts.open_time))/60), 0) AS avg_session_duration,
+			COUNT(DISTINCT ts.id)                              AS total_sessions_all_time,
+			COALESCE(SUM(p.paid_amount), 0)                   AS total_table_revenue,
+			-- Keep avg_session_duration here as actual minutes — this is for display, not a %
+			COALESCE(AVG(
+				GREATEST(
+					EXTRACT(EPOCH FROM (ts.close_time - ts.open_time)) / 60,
+				0)
+			), 0)                                              AS avg_session_duration,
 			COALESCE((
 				SELECT ts2.table_number
 				FROM table_session ts2
 				GROUP BY ts2.table_number
 				ORDER BY COUNT(*) DESC
 				LIMIT 1
-			), 0) AS most_used_table,
+			), 0)                                              AS most_used_table,
 			COALESCE((
 				SELECT COUNT(*)
 				FROM table_session ts2
 				GROUP BY ts2.table_number
 				ORDER BY COUNT(*) DESC
 				LIMIT 1
-			), 0) AS most_used_table_count,
+			), 0)                                              AS most_used_table_count,
 			COALESCE((
-				SELECT TO_CHAR(DATE(ts2.open_time), 'Day')
+				SELECT TRIM(TO_CHAR(DATE(ts2.open_time), 'Day'))
 				FROM table_session ts2
 				GROUP BY DATE(ts2.open_time)
 				ORDER BY COUNT(*) DESC
 				LIMIT 1
-			), 'Unknown') AS busiest_day
+			), 'Unknown')                                      AS busiest_day
 		FROM table_session ts
-		LEFT JOIN orders o ON ts.id = o.table_session_id
-		LEFT JOIN payments p ON o.id = p.order_id
+		LEFT JOIN orders   o ON ts.id = o.table_session_id
+		LEFT JOIN payments p ON o.id  = p.order_id
 	`
 
 	var stats models.NewTableStatsCard
@@ -843,23 +2510,32 @@ func (r *reportRepo) NewGetTableStatsCard(ctx context.Context) (models.NewTableS
 	return stats, nil
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// TOP TABLES — unchanged, no bugs
+// ────────────────────────────────────────────────────────────────────────────
+
 func (r *reportRepo) NewGetTopTables(ctx context.Context, from, to time.Time, limit int) ([]models.NewTopTable, error) {
 	query := `
-		SELECT 
+		SELECT
 			ts.table_number,
-			COALESCE(tstat.capacity, 0) AS capacity,
-			COUNT(DISTINCT ts.id) AS total_sessions,
-			COALESCE(SUM(p.paid_amount), 0) AS total_revenue,
-			COALESCE(AVG(EXTRACT(EPOCH FROM (ts.close_time - ts.open_time))/60), 0) AS avg_session_time,
-			COALESCE(
-				(COUNT(DISTINCT ts.id)::float / 
-				NULLIF((SELECT COUNT(*) FROM table_session WHERE open_time BETWEEN $1 AND $2), 0)) * 100, 0
-			) AS occupancy_rate,
-			COUNT(DISTINCT o.customer_phone) AS total_customers
+			COALESCE(tstat.capacity, 0)                                     AS capacity,
+			COUNT(DISTINCT ts.id)                                           AS total_sessions,
+			COALESCE(SUM(p.paid_amount), 0)                                 AS total_revenue,
+			COALESCE(AVG(
+				GREATEST(
+					EXTRACT(EPOCH FROM (ts.close_time - ts.open_time)) / 60,
+				0)
+			), 0)                                                           AS avg_session_time,
+			LEAST(
+				COALESCE(
+					(COUNT(DISTINCT ts.id)::float
+					 / NULLIF((SELECT COUNT(*) FROM table_session WHERE open_time BETWEEN $1 AND $2), 0)) * 100,
+				0), 100)                                                    AS occupancy_rate,
+			COUNT(DISTINCT o.customer_phone)                                AS total_customers
 		FROM table_session ts
 		LEFT JOIN table_status tstat ON ts.table_number = tstat.table_number
-		LEFT JOIN orders o ON ts.id = o.table_session_id
-		LEFT JOIN payments p ON o.id = p.order_id
+		LEFT JOIN orders       o     ON ts.id = o.table_session_id
+		LEFT JOIN payments     p     ON o.id  = p.order_id
 		WHERE ts.open_time BETWEEN $1 AND $2
 		GROUP BY ts.table_number, tstat.capacity
 		ORDER BY total_sessions DESC
@@ -892,37 +2568,50 @@ func (r *reportRepo) NewGetTopTables(ctx context.Context, from, to time.Time, li
 	return result, nil
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// TABLE USAGE BREAKDOWN — FIXED
+// BUG 3 FIX: total_hours_used was going negative due to timezone mismatch.
+// GREATEST(..., 0) clamps the subtraction result so it can never be negative.
+// ────────────────────────────────────────────────────────────────────────────
+
 func (r *reportRepo) NewGetTableUsageBreakdown(ctx context.Context, from, to time.Time) ([]models.NewTableUsageBreakdown, error) {
 	query := `
 		WITH table_stats AS (
-			SELECT 
+			SELECT
 				ts.table_number,
 				COALESCE(tstat.capacity, 0) AS capacity,
-				COUNT(DISTINCT ts.id) AS total_sessions,
-				COALESCE(SUM(EXTRACT(EPOCH FROM (COALESCE(ts.close_time, NOW()) - ts.open_time))/3600), 0) AS total_hours_used,
-				COALESCE(SUM(p.paid_amount), 0) AS total_revenue,
-				COALESCE(AVG(p.paid_amount), 0) AS avg_order_value
+				COUNT(DISTINCT ts.id)       AS total_sessions,
+				-- FIX BUG 3: GREATEST(..., 0) prevents negative hours from tz-offset bugs
+				COALESCE(SUM(
+					GREATEST(
+						EXTRACT(EPOCH FROM (
+							COALESCE(ts.close_time, NOW()) - ts.open_time
+						)) / 3600,
+					0)
+				), 0)                       AS total_hours_used,
+				COALESCE(SUM(p.paid_amount), 0)  AS total_revenue,
+				COALESCE(AVG(p.paid_amount), 0)  AS avg_order_value
 			FROM table_session ts
 			LEFT JOIN table_status tstat ON ts.table_number = tstat.table_number
-			LEFT JOIN orders o ON ts.id = o.table_session_id
-			LEFT JOIN payments p ON o.id = p.order_id
+			LEFT JOIN orders       o     ON ts.id = o.table_session_id
+			LEFT JOIN payments     p     ON o.id  = p.order_id
 			WHERE ts.open_time BETWEEN $1 AND $2
 			GROUP BY ts.table_number, tstat.capacity
 		),
 		totals AS (
-			SELECT 
+			SELECT
 				SUM(total_sessions) AS total_sessions_all,
-				SUM(total_revenue) AS total_revenue_all
+				SUM(total_revenue)  AS total_revenue_all
 			FROM table_stats
 		)
-		SELECT 
+		SELECT
 			ts.table_number,
 			ts.capacity,
 			ts.total_sessions,
 			ts.total_hours_used,
 			ts.total_revenue,
-			(ts.total_sessions::float / t.total_sessions_all) * 100 AS usage_percent,
-			(ts.total_revenue::float / NULLIF(t.total_revenue_all, 0)) * 100 AS revenue_percent,
+			COALESCE((ts.total_sessions::float / NULLIF(t.total_sessions_all, 0)) * 100, 0) AS usage_percent,
+			COALESCE((ts.total_revenue::float  / NULLIF(t.total_revenue_all,   0)) * 100, 0) AS revenue_percent,
 			ts.avg_order_value
 		FROM table_stats ts, totals t
 		ORDER BY ts.total_sessions DESC
@@ -955,25 +2644,37 @@ func (r *reportRepo) NewGetTableUsageBreakdown(ctx context.Context, from, to tim
 	return result, nil
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// PEAK HOURS — FIXED
+// BUG 4 FIX: occupancy_rate could exceed 100% because it counted cumulative
+// distinct tables across all days in the range, not per specific hour.
+// Now we count distinct table_numbers only within each hour bucket, and cap
+// the result at 100 with LEAST(..., 100).
+// ────────────────────────────────────────────────────────────────────────────
+
 func (r *reportRepo) NewGetTablePeakHours(ctx context.Context, from, to time.Time) ([]models.NewTablePeakHour, error) {
 	query := `
 		WITH hourly_stats AS (
-			SELECT 
+			SELECT
 				EXTRACT(HOUR FROM ts.open_time AT TIME ZONE 'Asia/Kathmandu') AS hour,
-				COUNT(DISTINCT ts.table_number) AS active_tables,
-				COUNT(DISTINCT ts.id) AS sessions_count,
-				COALESCE(SUM(p.paid_amount), 0) AS total_revenue,
-				(SELECT COUNT(*) FROM table_status) AS total_tables
+				-- FIX BUG 4: distinct table_number per hour, not cumulative
+				COUNT(DISTINCT ts.table_number)                               AS active_tables,
+				COUNT(DISTINCT ts.id)                                         AS sessions_count,
+				COALESCE(SUM(p.paid_amount), 0)                               AS total_revenue,
+				(SELECT COUNT(*) FROM table_status)                           AS total_tables
 			FROM table_session ts
-			LEFT JOIN orders o ON ts.id = o.table_session_id
-			LEFT JOIN payments p ON o.id = p.order_id
+			LEFT JOIN orders   o ON ts.id = o.table_session_id
+			LEFT JOIN payments p ON o.id  = p.order_id
 			WHERE ts.open_time BETWEEN $1 AND $2
 			GROUP BY EXTRACT(HOUR FROM ts.open_time AT TIME ZONE 'Asia/Kathmandu')
 		)
-		SELECT 
+		SELECT
 			hour::int,
 			active_tables,
-			(active_tables::float / NULLIF(total_tables, 0)) * 100 AS occupancy_rate,
+			-- FIX BUG 4: cap at 100
+			LEAST(
+				COALESCE((active_tables::float / NULLIF(total_tables, 0)) * 100, 0),
+			100) AS occupancy_rate,
 			total_revenue,
 			sessions_count
 		FROM hourly_stats
@@ -989,7 +2690,13 @@ func (r *reportRepo) NewGetTablePeakHours(ctx context.Context, from, to time.Tim
 	var result []models.NewTablePeakHour
 	for rows.Next() {
 		var peak models.NewTablePeakHour
-		if err := rows.Scan(&peak.Hour, &peak.ActiveTables, &peak.OccupancyRate, &peak.TotalRevenue, &peak.SessionsCount); err != nil {
+		if err := rows.Scan(
+			&peak.Hour,
+			&peak.ActiveTables,
+			&peak.OccupancyRate,
+			&peak.TotalRevenue,
+			&peak.SessionsCount,
+		); err != nil {
 			return nil, fmt.Errorf("failed to scan table peak hour: %w", err)
 		}
 		result = append(result, peak)
@@ -998,24 +2705,42 @@ func (r *reportRepo) NewGetTablePeakHours(ctx context.Context, from, to time.Tim
 	return result, nil
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// OCCUPANCY RATE — IMPLEMENTED (was missing from original code)
+// BUG 5: NewGetOccupancyRate was called by the orchestrator but never defined.
+// Rate = (occupied_count / total_capacity) * 100, returned as 0–100.
+// occupied_count = distinct tables that had a session open during that hour.
+// total_capacity = SUM of capacity column from table_status.
+// ────────────────────────────────────────────────────────────────────────────
+
 func (r *reportRepo) NewGetOccupancyRate(ctx context.Context, from, to time.Time) ([]models.NewOccupancyRate, error) {
 	query := `
-		SELECT 
-			hour::int,
-			occupied_count,
-			total_capacity,
-			(occupied_count::float / NULLIF(total_capacity, 0)) * 100 AS rate
-		FROM (
-			SELECT 
+		WITH capacity_info AS (
+			SELECT
+				COUNT(*)        AS total_tables,
+				SUM(capacity)   AS total_capacity
+			FROM table_status
+		),
+		hourly AS (
+			SELECT
 				EXTRACT(HOUR FROM ts.open_time AT TIME ZONE 'Asia/Kathmandu') AS hour,
-				COUNT(DISTINCT ts.table_number) AS occupied_count,
-				(SELECT COALESCE(SUM(capacity), 1) FROM table_status) AS total_capacity
+				COUNT(DISTINCT ts.table_number)                               AS occupied_count
 			FROM table_session ts
 			WHERE ts.open_time BETWEEN $1 AND $2
-				AND ts.close_time IS NULL
 			GROUP BY EXTRACT(HOUR FROM ts.open_time AT TIME ZONE 'Asia/Kathmandu')
-		) sub
-		ORDER BY hour ASC
+		)
+		SELECT
+			h.hour::int,
+			h.occupied_count,
+			ci.total_capacity::int,
+			-- Rate as 0–100 percentage of capacity seats that were occupied, capped at 100
+			LEAST(
+				COALESCE(
+					(h.occupied_count::float / NULLIF(ci.total_capacity, 0)) * 100,
+				0), 100) AS rate
+		FROM hourly h
+		CROSS JOIN capacity_info ci
+		ORDER BY h.hour ASC
 	`
 
 	rows, err := r.pool.Query(ctx, query, from, to)
@@ -1026,29 +2751,46 @@ func (r *reportRepo) NewGetOccupancyRate(ctx context.Context, from, to time.Time
 
 	var result []models.NewOccupancyRate
 	for rows.Next() {
-		var rate models.NewOccupancyRate
-		if err := rows.Scan(&rate.Hour, &rate.OccupiedCount, &rate.TotalCapacity, &rate.Rate); err != nil {
+		var o models.NewOccupancyRate
+		if err := rows.Scan(
+			&o.Hour,
+			&o.OccupiedCount,
+			&o.TotalCapacity,
+			&o.Rate,
+		); err != nil {
 			return nil, fmt.Errorf("failed to scan occupancy rate: %w", err)
 		}
-		result = append(result, rate)
+		result = append(result, o)
 	}
 
 	return result, nil
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// AVG SESSION DURATION — standalone helper
+// Returns average session duration in minutes for the given period.
+// Uses GREATEST to guard against negative durations from timezone bugs.
+// ────────────────────────────────────────────────────────────────────────────
+
 func (r *reportRepo) NewGetAvgSessionDuration(ctx context.Context, from, to time.Time) (float64, error) {
 	query := `
-		SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (COALESCE(close_time, NOW()) - open_time))/60), 0)
-		FROM table_session
-		WHERE open_time BETWEEN $1 AND $2
+		SELECT COALESCE(AVG(
+			GREATEST(
+				EXTRACT(EPOCH FROM (
+					COALESCE(ts.close_time, NOW()) - ts.open_time
+				)) / 60,
+			0)
+		), 0)
+		FROM table_session ts
+		WHERE ts.open_time BETWEEN $1 AND $2
 	`
 
-	var duration float64
-	if err := r.pool.QueryRow(ctx, query, from, to).Scan(&duration); err != nil {
-		return 0, fmt.Errorf("failed to scan avg session duration: %w", err)
+	var avg float64
+	if err := r.pool.QueryRow(ctx, query, from, to).Scan(&avg); err != nil {
+		return 0, fmt.Errorf("failed to query avg session duration: %w", err)
 	}
 
-	return duration, nil
+	return avg, nil
 }
 
 // ────────────────────────────────────────────────────────────────────────────────

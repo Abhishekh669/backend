@@ -22,6 +22,12 @@ func ReportServiceRouter(router *gin.RouterGroup, app *app.App) {
 	reportRoute.GET("/table-default", middlewares.UserMiddleware(), app.ReportHandler.GetDefaultTableReport)
 	reportRoute.GET("/table-custom", middlewares.UserMiddleware(), app.ReportHandler.GetCustomRangeTablesReport)
 
+	reportRoute.GET("/staff-default", middlewares.UserMiddleware(), app.ReportHandler.GetDefaultStaffReport)
+	reportRoute.GET("/staff-custom", middlewares.UserMiddleware(), app.ReportHandler.GetCustomRangeStaffsReport)
+
+	reportRoute.GET("/raw-material-default", middlewares.UserMiddleware(), app.ReportHandler.GetDefaultRawMaterialsReport)
+	reportRoute.GET("/raw-material-custom", middlewares.UserMiddleware(), app.ReportHandler.GetCustomRangeRawMaterialsReport)
+
 	// Cache management (admin only)
 	reportRoute.POST("/default/refresh", middlewares.UserMiddleware(), app.ReportHandler.RefreshDefaultReportCache)
 	reportRoute.GET("/default/status", middlewares.UserMiddleware(), app.ReportHandler.GetDefaultReportCacheStatus)

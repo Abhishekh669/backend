@@ -2,6 +2,436 @@ package models
 
 import "time"
 
+// ─── Raw Material Overview Card ───────────────────────────────────────────────
+// NOTE: TotalRevenue, GrossMargin, MarginPercent have been removed.
+// The old query computed them via a CROSS JOIN that inflated values by N materials.
+
+type NewRawMaterialOverviewCard struct {
+	TotalMaterialUsed        float64 `json:"total_material_used"`
+	TotalInvestment          float64 `json:"total_investment"`
+	TotalOrders              int     `json:"total_orders"`
+	HighestCostMaterialValue float64 `json:"highest_cost_material_value"`
+	HighestCostMaterialName  string  `json:"highest_cost_material_name"`
+	MostUsedMaterialQuantity float64 `json:"most_used_material_quantity"`
+	MostUsedMaterialName     string  `json:"most_used_material_name"`
+}
+
+// ─── Raw Material Stats Card (All Time) ──────────────────────────────────────
+
+type NewRawMaterialStatsCard struct {
+	TotalMaterials            int     `json:"total_materials"`
+	TotalCurrentStock         float64 `json:"total_current_stock"`
+	TotalInventoryValue       float64 `json:"total_inventory_value"`
+	TotalMaterialUsedAllTime  float64 `json:"total_material_used_all_time"`
+	TotalInvestmentAllTime    float64 `json:"total_investment_all_time"`
+	MaxUsedQuantity           float64 `json:"max_used_quantity"`
+	MostUsedMaterialName      string  `json:"most_used_material_name"`
+	MostUsedMaterialQuantity  float64 `json:"most_used_material_quantity"`
+	MostExpensiveUnitCost     float64 `json:"most_expensive_unit_cost"`
+	MostExpensiveMaterialName string  `json:"most_expensive_material_name"`
+	AvgMaterialValue          float64 `json:"avg_material_value"`
+}
+
+// ─── Trend Point ─────────────────────────────────────────────────────────────
+
+type NewRawMaterialTrendPoint struct {
+	Period       string  `json:"period"`
+	MaterialUsed float64 `json:"material_used"`
+	TotalCost    float64 `json:"total_cost"`
+	OrdersCount  int     `json:"orders_count"`
+}
+
+// ─── Paginated Trend ─────────────────────────────────────────────────────────
+
+type NewRawMaterialPaginatedTrendPoints struct {
+	Data       []NewRawMaterialTrendPoint `json:"data"`
+	Pagination NewPaginationInfo          `json:"pagination"`
+}
+
+// ─── Top Used Raw Material ───────────────────────────────────────────────────
+
+type NewTopUsedRawMaterial struct {
+	MaterialID        string  `json:"material_id"`
+	MaterialName      string  `json:"material_name"`
+	Unit              string  `json:"unit"`
+	UnitCost          float64 `json:"unit_cost"`
+	TotalQuantityUsed float64 `json:"total_quantity_used"`
+	TotalCost         float64 `json:"total_cost"`
+	AffectedOrders    int     `json:"affected_orders"`
+}
+
+// ─── Usage Breakdown ─────────────────────────────────────────────────────────
+
+type NewRawMaterialUsageBreakdown struct {
+	MaterialID   string  `json:"material_id"`
+	MaterialName string  `json:"material_name"`
+	Unit         string  `json:"unit"`
+	UnitCost     float64 `json:"unit_cost"`
+	CurrentStock float64 `json:"current_stock"`
+	PeriodUsage  float64 `json:"period_usage"`
+	PeriodCost   float64 `json:"period_cost"`
+	UsagePercent float64 `json:"usage_percent"`
+	OrdersCount  int     `json:"orders_count"`
+}
+
+// ─── Peak Hour ───────────────────────────────────────────────────────────────
+
+type NewRawMaterialPeakHour struct {
+	Hour              int     `json:"hour"`
+	TotalMaterialUsed float64 `json:"total_material_used"`
+	TotalCost         float64 `json:"total_cost"`
+	OrdersCount       int     `json:"orders_count"`
+	UniqueItemsUsed   int     `json:"unique_items_used"`
+}
+
+// ─── Daily Usage Summary ─────────────────────────────────────────────────────
+
+type NewDailyRawMaterialUsage struct {
+	UsageDate           string  `json:"usage_date"`
+	TotalMaterialUsed   float64 `json:"total_material_used"`
+	TotalCost           float64 `json:"total_cost"`
+	OrdersCount         int     `json:"orders_count"`
+	UniqueMaterialsUsed int     `json:"unique_materials_used"`
+}
+
+// ─── Default Response ────────────────────────────────────────────────────────
+
+type NewDefaultRawMaterialResponse struct {
+	Overview               NewRawMaterialOverviewCard     `json:"overview"`
+	StatsCard              NewRawMaterialStatsCard        `json:"stats_card"`
+	DailyTrend             []NewRawMaterialTrendPoint     `json:"daily_trend"`
+	WeeklyTrend            []NewRawMaterialTrendPoint     `json:"weekly_trend"`
+	MonthlyTrend           []NewRawMaterialTrendPoint     `json:"monthly_trend"`
+	YearlyTrend            []NewRawMaterialTrendPoint     `json:"yearly_trend"`
+	TopUsedMaterials       []NewTopUsedRawMaterial        `json:"top_used_materials"`
+	MaterialUsageBreakdown []NewRawMaterialUsageBreakdown `json:"material_usage_breakdown"`
+	PeakUsageHours         []NewRawMaterialPeakHour       `json:"peak_usage_hours"`
+	DailyUsageSummary      []NewDailyRawMaterialUsage     `json:"daily_usage_summary"`
+}
+
+// ─── Custom Range Response ───────────────────────────────────────────────────
+
+type NewCustomRangeRawMaterialResponse struct {
+	Overview               NewRawMaterialOverviewCard          `json:"overview"`
+	StatsCard              NewRawMaterialStatsCard             `json:"stats_card"`
+	DailyTrend             *NewRawMaterialPaginatedTrendPoints `json:"daily_trend"`
+	WeeklyTrend            *NewRawMaterialPaginatedTrendPoints `json:"weekly_trend"`
+	MonthlyTrend           *NewRawMaterialPaginatedTrendPoints `json:"monthly_trend"`
+	YearlyTrend            *NewRawMaterialPaginatedTrendPoints `json:"yearly_trend"`
+	TopUsedMaterials       []NewTopUsedRawMaterial             `json:"top_used_materials"`
+	MaterialUsageBreakdown []NewRawMaterialUsageBreakdown      `json:"material_usage_breakdown"`
+	PeakUsageHours         []NewRawMaterialPeakHour            `json:"peak_usage_hours"`
+	DailyUsageSummary      []NewDailyRawMaterialUsage          `json:"daily_usage_summary"`
+}
+
+// ─── Request ─────────────────────────────────────────────────────────────────
+
+type NewRawMaterialCustomRangeReportRequest struct {
+	From  time.Time `json:"from"`
+	To    time.Time `json:"to"`
+	Limit int       `json:"limit"`
+	Page  int       `json:"page"`
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// NEW STAFF REPORT MODELS
+// Mirrors the NewTable* pattern. Every type is prefixed with "New".
+// ────────────────────────────────────────────────────────────────────────────
+
+// ─── Pagination (reused from table report pattern) ───────────────────────────
+
+// NewStaffPaginatedTrendPoints wraps a page of trend data.
+type NewStaffPaginatedTrendPoints struct {
+	Data       []NewStaffTrendPoint `json:"data"`
+	Pagination NewPaginationInfo    `json:"pagination"`
+}
+
+// ─── Overview Card ────────────────────────────────────────────────────────────
+
+// NewStaffOverviewCard provides the at-a-glance numbers for the chosen period.
+type NewStaffOverviewCard struct {
+	// Headcount
+	TotalEmployees  int `json:"total_employees"`
+	ActiveEmployees int `json:"active_employees"` // is_active = true
+
+	// Attendance counters for the period
+	TotalPresentDays int `json:"total_present_days"`
+	TotalAbsentDays  int `json:"total_absent_days"`
+	TotalLateDays    int `json:"total_late_days"`
+	TotalHalfDays    int `json:"total_half_days"`
+	TotalLeaveDays   int `json:"total_leave_days"`
+
+	// Derived rates
+	OverallAttendanceRate float64 `json:"overall_attendance_rate"` // present / (present+absent) * 100
+	LateRate              float64 `json:"late_rate"`               // late / total_records * 100
+	LeaveApprovalRate     float64 `json:"leave_approval_rate"`     // approved / total_leaves * 100
+
+	// Work-hours
+	TotalWorkHours float64 `json:"total_work_hours"`
+	AvgWorkHours   float64 `json:"avg_work_hours_per_employee"` // per employee per present day
+
+	// Peak metrics
+	BusiestDay     string `json:"busiest_day"`      // day-of-week with most check-ins
+	PeakAttendHour int    `json:"peak_attend_hour"` // most common check-in hour (0-23)
+}
+
+// ─── Stats Card (all-time / snapshot) ────────────────────────────────────────
+
+// NewStaffStatsCard holds all-time aggregate figures (no date filter).
+type NewStaffStatsCard struct {
+	TotalEmployees             int     `json:"total_employees"`
+	ActiveEmployees            int     `json:"active_employees"`
+	TotalAttendanceRecords     int     `json:"total_attendance_records"`
+	AllTimeWorkHours           float64 `json:"all_time_work_hours"`
+	AvgSessionHours            float64 `json:"avg_session_hours"` // avg hours per present record
+	MostPresentEmployeeID      string  `json:"most_present_employee_id"`
+	MostPresentEmployeeName    string  `json:"most_present_employee_name"`
+	MostPresentDays            int     `json:"most_present_days"`
+	MostAbsentEmployeeID       string  `json:"most_absent_employee_id"`
+	MostAbsentEmployeeName     string  `json:"most_absent_employee_name"`
+	MostAbsentDays             int     `json:"most_absent_days"`
+	LongestAvgServiceHours     float64 `json:"longest_avg_service_hours"` // employee with highest avg shift
+	LongestServiceEmployeeID   string  `json:"longest_service_employee_id"`
+	LongestServiceEmployeeName string  `json:"longest_service_employee_name"`
+	TotalPendingLeaves         int     `json:"total_pending_leaves"`
+	TotalApprovedLeaves        int     `json:"total_approved_leaves"`
+}
+
+// ─── Trend Point ─────────────────────────────────────────────────────────────
+
+// NewStaffTrendPoint is one point on any trend chart (daily/weekly/monthly/yearly).
+type NewStaffTrendPoint struct {
+	Period         string  `json:"period"` // "2024-01-15" / "2024-W03" / "2024-01" / "2024"
+	Present        int     `json:"present"`
+	Absent         int     `json:"absent"`
+	Late           int     `json:"late"`
+	HalfDay        int     `json:"half_day"`
+	OnLeave        int     `json:"on_leave"`
+	TotalWorkHours float64 `json:"total_work_hours"`
+	AttendanceRate float64 `json:"attendance_rate"` // present/(present+absent)*100
+}
+
+// ─── Individual Attendance Record ────────────────────────────────────────────
+
+// NewEmployeeAttendanceRecord is one raw row from the attendance table,
+// enriched with the employee's user details.
+type NewEmployeeAttendanceRecord struct {
+	// attendance table fields
+	AttendanceID string  `json:"attendance_id"`
+	WorkDate     string  `json:"work_date"`      // "YYYY-MM-DD"
+	Status       string  `json:"status"`         // present | absent | late | half_day | leave
+	CheckInTime  *string `json:"check_in_time"`  // nullable TIMESTAMPTZ → ISO string
+	CheckOutTime *string `json:"check_out_time"` // nullable
+	WorkHours    float64 `json:"work_hours"`     // derived: (check_out - check_in) / 3600, floored at 0
+	NeedReview   bool    `json:"need_review"`
+
+	// denormalised user fields (so the frontend never needs a second call)
+	EmployeeID   string  `json:"employee_id"`
+	EmployeeName string  `json:"employee_name"`
+	Email        string  `json:"email"`
+	Phone        string  `json:"phone"`
+	Image        *string `json:"image"`
+	Role         string  `json:"role"`
+	Gender       string  `json:"gender"`
+}
+
+// ─── Per-Employee Attendance Row ──────────────────────────────────────────────
+
+// NewEmployeeAttendanceSummary holds per-employee aggregate stats for the period
+// plus every individual attendance record so the frontend can render both the
+// summary card and the detail table from a single response.
+type NewEmployeeAttendanceSummary struct {
+	// user identity
+	EmployeeID   string  `json:"employee_id"`
+	EmployeeName string  `json:"employee_name"`
+	Email        string  `json:"email"`
+	Phone        string  `json:"phone"`
+	Image        *string `json:"image"`
+	Role         string  `json:"role"`
+	Gender       string  `json:"gender"`
+
+	// aggregated counters
+	PresentDays     int     `json:"present_days"`
+	AbsentDays      int     `json:"absent_days"`
+	LateDays        int     `json:"late_days"`
+	HalfDays        int     `json:"half_days"`
+	LeaveDays       int     `json:"leave_days"`
+	TotalWorkHours  float64 `json:"total_work_hours"`
+	AvgWorkHours    float64 `json:"avg_work_hours"`  // per attended shift
+	AttendanceRate  float64 `json:"attendance_rate"` // present/(present+absent)*100
+	NeedReviewCount int     `json:"need_review_count"`
+
+	// every individual record in the period — ordered by work_date ASC
+	Records []NewEmployeeAttendanceRecord `json:"records"`
+}
+
+// ─── Most Present / Absent ────────────────────────────────────────────────────
+
+// NewMostPresentEmployee is the top-N most present employees in the period.
+type NewMostPresentEmployee struct {
+	EmployeeID     string  `json:"employee_id"`
+	EmployeeName   string  `json:"employee_name"`
+	Email          string  `json:"email"`
+	Phone          string  `json:"phone"`
+	Image          *string `json:"image"`
+	Role           string  `json:"role"`
+	Gender         string  `json:"gender"`
+	PresentDays    int     `json:"present_days"`
+	TotalWorkHours float64 `json:"total_work_hours"`
+	AttendanceRate float64 `json:"attendance_rate"`
+}
+
+// NewMostAbsentEmployee is the top-N most absent employees in the period.
+type NewMostAbsentEmployee struct {
+	EmployeeID     string  `json:"employee_id"`
+	EmployeeName   string  `json:"employee_name"`
+	Email          string  `json:"email"`
+	Phone          string  `json:"phone"`
+	Image          *string `json:"image"`
+	Role           string  `json:"role"`
+	Gender         string  `json:"gender"`
+	AbsentDays     int     `json:"absent_days"`
+	TotalWorkHours float64 `json:"total_work_hours"`
+	AttendanceRate float64 `json:"attendance_rate"`
+}
+
+// ─── Longest Service (highest avg shift hours) ───────────────────────────────
+
+// NewLongestServiceEmployee is the top-N employees by average hours per shift.
+type NewLongestServiceEmployee struct {
+	EmployeeID     string  `json:"employee_id"`
+	EmployeeName   string  `json:"employee_name"`
+	Email          string  `json:"email"`
+	Phone          string  `json:"phone"`
+	Image          *string `json:"image"`
+	Role           string  `json:"role"`
+	Gender         string  `json:"gender"`
+	TotalWorkHours float64 `json:"total_work_hours"`
+	AvgShiftHours  float64 `json:"avg_shift_hours"`
+	PresentDays    int     `json:"present_days"`
+	AttendanceRate float64 `json:"attendance_rate"`
+}
+
+// ─── Role Breakdown ───────────────────────────────────────────────────────────
+
+// NewStaffRoleBreakdown shows headcount, hours and attendance per role.
+type NewStaffRoleBreakdown struct {
+	Role           string  `json:"role"`
+	EmployeeCount  int     `json:"employee_count"`
+	TotalWorkHours float64 `json:"total_work_hours"`
+	AvgWorkHours   float64 `json:"avg_work_hours"`
+	AttendanceRate float64 `json:"attendance_rate"`
+	Salary         float64 `json:"total_salary"`
+	AvgSalary      float64 `json:"avg_salary"`
+	Percent        float64 `json:"percent"` // % of total headcount
+}
+
+// ─── Leave Analysis ───────────────────────────────────────────────────────────
+
+// NewLeaveAnalysis aggregates leave request data for the period.
+type NewLeaveAnalysis struct {
+	TotalRequests     int                   `json:"total_requests"`
+	PendingCount      int                   `json:"pending_count"`
+	ApprovedCount     int                   `json:"approved_count"`
+	RejectedCount     int                   `json:"rejected_count"`
+	ApprovalRate      float64               `json:"approval_rate"`  // approved/total*100
+	AvgLeaveDays      float64               `json:"avg_leave_days"` // avg duration of approved leaves
+	TopLeaveEmployees []NewTopLeaveEmployee `json:"top_leave_employees"`
+}
+
+// NewTopLeaveEmployee is one row in the most-leaves list.
+type NewTopLeaveEmployee struct {
+	EmployeeID   string  `json:"employee_id"`
+	EmployeeName string  `json:"employee_name"`
+	Role         string  `json:"role"`
+	LeaveCount   int     `json:"leave_count"`
+	TotalDays    float64 `json:"total_days"`
+}
+
+// ─── Daily Summary ────────────────────────────────────────────────────────────
+
+// NewDailyAttendanceSummary is one row in the daily breakdown table.
+type NewDailyAttendanceSummary struct {
+	WorkDate       string  `json:"work_date"`
+	Present        int     `json:"present"`
+	Absent         int     `json:"absent"`
+	Late           int     `json:"late"`
+	HalfDay        int     `json:"half_day"`
+	OnLeave        int     `json:"on_leave"`
+	TotalWorkHours float64 `json:"total_work_hours"`
+	AttendanceRate float64 `json:"attendance_rate"`
+}
+
+// ─── Peak Hours ───────────────────────────────────────────────────────────────
+
+// NewStaffPeakHour shows check-in traffic per hour of the day.
+type NewStaffPeakHour struct {
+	Hour         int     `json:"hour"` // 0–23
+	CheckIns     int     `json:"check_ins"`
+	CheckOuts    int     `json:"check_outs"`
+	ActiveStaff  int     `json:"active_staff"` // distinct employees present in that hour
+	AvgWorkHours float64 `json:"avg_work_hours"`
+}
+
+// ─── Payroll Summary ──────────────────────────────────────────────────────────
+
+// NewPayrollSummary provides salary totals and per-role breakdown.
+type NewPayrollSummary struct {
+	TotalMonthlySalary float64                 `json:"total_monthly_salary"`
+	TotalEmployees     int                     `json:"total_employees"`
+	AvgSalary          float64                 `json:"avg_salary"`
+	ByRole             []NewStaffRoleBreakdown `json:"by_role"`
+}
+
+// ─── Aggregated Response Types ────────────────────────────────────────────────
+
+// NewDefaultStaffResponse is returned by the default (last-30-days) endpoint.
+type NewDefaultStaffResponse struct {
+	Overview                NewStaffOverviewCard           `json:"overview"`
+	StatsCard               NewStaffStatsCard              `json:"stats_card"`
+	DailyTrend              []NewStaffTrendPoint           `json:"daily_trend"`
+	WeeklyTrend             []NewStaffTrendPoint           `json:"weekly_trend"`
+	MonthlyTrend            []NewStaffTrendPoint           `json:"monthly_trend"`
+	YearlyTrend             []NewStaffTrendPoint           `json:"yearly_trend"`
+	DailySummary            []NewDailyAttendanceSummary    `json:"daily_summary"`
+	EmployeeAttendance      []NewEmployeeAttendanceSummary `json:"employee_attendance"`
+	MostPresentEmployees    []NewMostPresentEmployee       `json:"most_present_employees"`
+	MostAbsentEmployees     []NewMostAbsentEmployee        `json:"most_absent_employees"`
+	LongestServiceEmployees []NewLongestServiceEmployee    `json:"longest_service_employees"`
+	RoleBreakdown           []NewStaffRoleBreakdown        `json:"role_breakdown"`
+	LeaveAnalysis           NewLeaveAnalysis               `json:"leave_analysis"`
+	PeakHours               []NewStaffPeakHour             `json:"peak_hours"`
+	PayrollSummary          NewPayrollSummary              `json:"payroll_summary"`
+}
+
+// NewCustomRangeStaffResponse is returned by the custom-date-range endpoint.
+// Trend fields are paginated; everything else matches the default response.
+type NewCustomRangeStaffResponse struct {
+	Overview                NewStaffOverviewCard           `json:"overview"`
+	StatsCard               NewStaffStatsCard              `json:"stats_card"`
+	DailyTrend              *NewStaffPaginatedTrendPoints  `json:"daily_trend"`
+	WeeklyTrend             *NewStaffPaginatedTrendPoints  `json:"weekly_trend"`
+	MonthlyTrend            *NewStaffPaginatedTrendPoints  `json:"monthly_trend"`
+	YearlyTrend             *NewStaffPaginatedTrendPoints  `json:"yearly_trend"`
+	DailySummary            []NewDailyAttendanceSummary    `json:"daily_summary"`
+	EmployeeAttendance      []NewEmployeeAttendanceSummary `json:"employee_attendance"`
+	MostPresentEmployees    []NewMostPresentEmployee       `json:"most_present_employees"`
+	MostAbsentEmployees     []NewMostAbsentEmployee        `json:"most_absent_employees"`
+	LongestServiceEmployees []NewLongestServiceEmployee    `json:"longest_service_employees"`
+	RoleBreakdown           []NewStaffRoleBreakdown        `json:"role_breakdown"`
+	LeaveAnalysis           NewLeaveAnalysis               `json:"leave_analysis"`
+	PeakHours               []NewStaffPeakHour             `json:"peak_hours"`
+	PayrollSummary          NewPayrollSummary              `json:"payroll_summary"`
+}
+
+// NewStaffCustomRangeReportRequest is the request payload for custom-range reports.
+type NewStaffCustomRangeReportRequest struct {
+	From  time.Time `json:"from"`
+	To    time.Time `json:"to"`
+	Limit int       `json:"limit"`
+	Page  int       `json:"page"`
+}
+
 // ─── Shared Table Trend Point ────────────────────────────────────────────────
 
 type NewTableTrendPoint struct {

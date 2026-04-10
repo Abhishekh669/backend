@@ -23,6 +23,210 @@ func NewReportHandler(repo repository.ReportRepo) *ReportHandler {
 	}
 }
 
+func (h *ReportHandler) GetCustomRangeRawMaterialsReport(c *gin.Context) {
+	// Parse query parameters
+	fromStr := c.Query("from")
+	toStr := c.Query("to")
+
+	if fromStr == "" || toStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "from and to parameters are required",
+			"success": false,
+		})
+		return
+	}
+
+	from, err := time.Parse("2006-01-02", fromStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "invalid from date format (use YYYY-MM-DD)",
+			"success": false,
+		})
+		return
+	}
+
+	to, err := time.Parse("2006-01-02", toStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "invalid to date format (use YYYY-MM-DD)",
+			"success": false,
+		})
+		return
+	}
+
+	// Parse pagination with defaults
+	limit := c.DefaultQuery("limit", "10")
+	page := c.DefaultQuery("page", "0")
+
+	limitInt, err := strconv.Atoi(limit)
+	if err != nil {
+		limitInt = 10
+	}
+
+	pageInt, err := strconv.Atoi(page)
+	if err != nil {
+		pageInt = 0
+	}
+
+	req := &models.NewRawMaterialCustomRangeReportRequest{
+		From:  from,
+		To:    to,
+		Limit: limitInt,
+		Page:  pageInt,
+	}
+
+	report, err := h.reportRepo.NewGetCustomRangeRawMaterialReport(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   err.Error(),
+			"success": false,
+		})
+		return
+	}
+
+	c.Header("X-Cache", "BYPASS")
+	c.JSON(http.StatusOK, gin.H{
+		"report":  report,
+		"success": true,
+	})
+}
+
+// GET /api/v2/reports/revenue/default
+func (h *ReportHandler) GetDefaultRawMaterialsReport(c *gin.Context) {
+	// Try to get from cache
+	cachedReport, isReady := h.defaultReportCache.GetRawMaterialReport()
+
+	if isReady && cachedReport != nil {
+		// Add cache headers
+		c.Header("X-Cache", "HIT")
+		c.Header("X-Cache-Last-Updated", h.defaultReportCache.GetLastUpdated().Format(time.RFC3339))
+		c.Header("X-Cache-Is-Refreshing", boolToString(h.defaultReportCache.IsRefreshing()))
+		c.JSON(http.StatusOK, gin.H{
+			"report":  cachedReport,
+			"success": true,
+		})
+		return
+	}
+
+	// Cache miss - fetch from DB (should not happen after initial load)
+	c.Header("X-Cache", "MISS")
+	report, err := h.reportRepo.NewGetDefaultRawMaterialReport(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   err.Error(),
+			"success": false,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"report":  report,
+		"success": true,
+	})
+}
+
+func (h *ReportHandler) GetCustomRangeStaffsReport(c *gin.Context) {
+	// Parse query parameters
+	fromStr := c.Query("from")
+	toStr := c.Query("to")
+
+	if fromStr == "" || toStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "from and to parameters are required",
+			"success": false,
+		})
+		return
+	}
+
+	from, err := time.Parse("2006-01-02", fromStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "invalid from date format (use YYYY-MM-DD)",
+			"success": false,
+		})
+		return
+	}
+
+	to, err := time.Parse("2006-01-02", toStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "invalid to date format (use YYYY-MM-DD)",
+			"success": false,
+		})
+		return
+	}
+
+	// Parse pagination with defaults
+	limit := c.DefaultQuery("limit", "10")
+	page := c.DefaultQuery("page", "0")
+
+	limitInt, err := strconv.Atoi(limit)
+	if err != nil {
+		limitInt = 10
+	}
+
+	pageInt, err := strconv.Atoi(page)
+	if err != nil {
+		pageInt = 0
+	}
+
+	req := &models.NewStaffCustomRangeReportRequest{
+		From:  from,
+		To:    to,
+		Limit: limitInt,
+		Page:  pageInt,
+	}
+
+	report, err := h.reportRepo.NewGetCustomRangeStaffReport(c.Request.Context(), req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   err.Error(),
+			"success": false,
+		})
+		return
+	}
+
+	c.Header("X-Cache", "BYPASS")
+	c.JSON(http.StatusOK, gin.H{
+		"report":  report,
+		"success": true,
+	})
+}
+
+// GET /api/v2/reports/revenue/default
+func (h *ReportHandler) GetDefaultStaffReport(c *gin.Context) {
+	// Try to get from cache
+	cachedReport, isReady := h.defaultReportCache.GetStaffReport()
+
+	if isReady && cachedReport != nil {
+		// Add cache headers
+		c.Header("X-Cache", "HIT")
+		c.Header("X-Cache-Last-Updated", h.defaultReportCache.GetLastUpdated().Format(time.RFC3339))
+		c.Header("X-Cache-Is-Refreshing", boolToString(h.defaultReportCache.IsRefreshing()))
+		c.JSON(http.StatusOK, gin.H{
+			"report":  cachedReport,
+			"success": true,
+		})
+		return
+	}
+
+	// Cache miss - fetch from DB (should not happen after initial load)
+	c.Header("X-Cache", "MISS")
+	report, err := h.reportRepo.NewGetDefaultStaffReport(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   err.Error(),
+			"success": false,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"report":  report,
+		"success": true,
+	})
+}
+
 func (h *ReportHandler) GetCustomRangeTablesReport(c *gin.Context) {
 	// Parse query parameters
 	fromStr := c.Query("from")
