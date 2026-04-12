@@ -30,6 +30,7 @@ type AttendanceRepo interface {
 	DeleteLeaveRequest(c context.Context, leaveId *uuid.UUID) error
 	UpdateLeaveRequest(c context.Context, req *models.UpdateAttendanceLeave) error
 	CreateEmployeeRequest(c context.Context, req *models.CreateAttendanceLeave) error
+	DeleteInactiveLeaveRequestAttendance(ctx context.Context) error
 	AutoReviewIncompleteAttendance(ctx context.Context) error
 	GetAttendanceHistory(ctx context.Context, limit, page int, fromDate, toDate *time.Time, employeeID *uuid.UUID) (*models.AttendanceHistoryResponse, error)
 	DeleteAttendanceById(ctx context.Context, attendanceID string) error
@@ -1336,6 +1337,22 @@ func (r *attendanceRepo) CreateEmployeeRequest(c context.Context, req *models.Cr
 	return nil
 }
 
+func (r *attendanceRepo) DeleteInactiveLeaveRequestAttendance(ctx context.Context) error {
+	query := `
+		DELETE FROM attendance_leave
+		WHERE status = 'pending'
+		  AND checked_by IS NULL
+		  AND created_at < NOW() - INTERVAL '2 days'
+	`
+
+	_, err := r.pool.Exec(ctx, query)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r *attendanceRepo) AutoReviewIncompleteAttendance(ctx context.Context) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -1832,7 +1849,6 @@ func (r *attendanceRepo) GetCurrentAttendance(ctx context.Context) (*models.Curr
 	}, nil
 }
 
-// TODO: Add the go routine to chekc if any employee has left check out time empty but the chekc in is done
 func (r *attendanceRepo) CheckInAttendance(c context.Context, req *models.CheckInOutAttendanceType) error {
 
 	if req == nil {

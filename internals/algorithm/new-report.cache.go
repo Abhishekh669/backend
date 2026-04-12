@@ -2,6 +2,7 @@ package algorithm
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -40,7 +41,7 @@ type reportResult struct {
 	err        error
 }
 
-func (c *DefaultRevenueCache) ReloadFromDB() {
+func (c *DefaultRevenueCache) ReloadFromDB() error {
 	c.mu.Lock()
 	c.isRefreshing = true
 	c.mu.Unlock()
@@ -204,16 +205,16 @@ func (c *DefaultRevenueCache) ReloadFromDB() {
 
 	totalDuration := time.Since(startTime)
 
+	var returnErr error
 	if hasError {
+		returnErr = fmt.Errorf("cache reload completed with %d error(s)", errorCount)
 		log.Printf("⚠️ [DefaultRevenueCache] Cache reload completed with %d error(s) in %v", errorCount, totalDuration)
 	} else {
 		log.Printf("✅ [DefaultRevenueCache] Cache reload completed successfully in %v", totalDuration)
 	}
 
-	// Update cache with collected data (even if partial errors)
+	// Update cache
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	c.data = CachedDefaultRevenue{
 		Revenue:      revenueData,
 		Sales:        salesData,
@@ -222,12 +223,13 @@ func (c *DefaultRevenueCache) ReloadFromDB() {
 		Staffs:       staffsData,
 		RawMaterials: rawMaterialsData,
 		LastUpdated:  time.Now(),
-		IsReady:      true, // Cache is ready even with partial data
+		IsReady:      true,
 	}
+	c.mu.Unlock()
 
 	log.Printf("📊 [DefaultRevenueCache] Cache updated at %s", time.Now().Format("2006-01-02 15:04:05"))
 
-	// Log summary of what was loaded
+	// Count loaded reports
 	loadedCount := 0
 	if revenueData != nil {
 		loadedCount++
@@ -247,7 +249,10 @@ func (c *DefaultRevenueCache) ReloadFromDB() {
 	if rawMaterialsData != nil {
 		loadedCount++
 	}
+
 	log.Printf("📊 [DefaultRevenueCache] Successfully loaded %d/6 report types", loadedCount)
+
+	return returnErr
 }
 
 // Getter methods remain the same

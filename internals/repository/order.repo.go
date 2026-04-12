@@ -25,6 +25,9 @@ type OrderHistoryResponse struct {
 
 // OrderRepo interface defines all order-related operations
 type OrderRepo interface {
+	DeleteStaleTableSessions(ctx context.Context) error
+	DeleteInActiveTableValidation(ctx context.Context) error
+	DeleteInApprovedOrders(ctx context.Context) error
 	GetAllOrderHistoryForAdmin(ctx context.Context, limit, page int, fromDate, toDate *time.Time) (*OrderHistoryResponse, error)
 	GetAllOrderApprovalRequest(ctx context.Context) ([]models.TableValidation, error)
 	UpdateOrderItemStatus(ctx context.Context, status *models.OrderStatus, orderItemId string, orderId string) error
@@ -52,6 +55,172 @@ type OrderRepo interface {
 // orderRepo implements OrderRepo interface
 type orderRepo struct {
 	pool *pgxpool.Pool
+}
+
+func (r *orderRepo) DeleteStaleTableSessions(ctx context.Context) error {
+	// Grab table_numbers from stale sessions before deleting
+	fetchQuery := `
+		SELECT ts.id, ts.table_number
+		FROM table_session ts
+		WHERE ts.status = 'empty'
+		AND ts.created_at < NOW() - INTERVAL '10 minutes'
+		AND NOT EXISTS (
+			SELECT 1 FROM orders o
+			WHERE o.table_session_id = ts.id
+			AND o.status != 'not-approved'
+		)
+	`
+	rows, err := r.pool.Query(ctx, fetchQuery)
+	if err != nil {
+		return fmt.Errorf("failed to fetch stale table sessions: %w", err)
+	}
+	defer rows.Close()
+
+	type sessionInfo struct {
+		sessionID   string
+		tableNumber int
+	}
+
+	var sessions []sessionInfo
+	for rows.Next() {
+		var s sessionInfo
+		if err := rows.Scan(&s.sessionID, &s.tableNumber); err != nil {
+			return fmt.Errorf("failed to scan stale session: %w", err)
+		}
+		sessions = append(sessions, s)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("row iteration error: %w", err)
+	}
+
+	if len(sessions) == 0 {
+		return nil
+	}
+
+	sessionIDs := make([]string, len(sessions))
+	tableNumbers := make([]int, len(sessions))
+	for i, s := range sessions {
+		sessionIDs[i] = s.sessionID
+		tableNumbers[i] = s.tableNumber
+	}
+
+	// Delete the stale sessions
+	deleteQuery := `
+		DELETE FROM table_session
+		WHERE id = ANY($1)
+	`
+	_, err = r.pool.Exec(ctx, deleteQuery, sessionIDs)
+	if err != nil {
+		return fmt.Errorf("failed to delete stale table sessions: %w", err)
+	}
+
+	// Reset table_status to empty for affected tables
+	updateQuery := `
+		UPDATE table_status
+		SET status = 'empty'
+		WHERE table_number = ANY($1)
+	`
+	_, err = r.pool.Exec(ctx, updateQuery, tableNumbers)
+	if err != nil {
+		return fmt.Errorf("failed to reset table status after stale session cleanup: %w", err)
+	}
+
+	log.Printf("🧹 Cleaned up %d stale table sessions", len(sessions))
+	return nil
+}
+
+func (r *orderRepo) DeleteInActiveTableValidation(ctx context.Context) error {
+	query := `
+		DELETE FROM table_validation
+		WHERE waiter_id IS NULL
+		AND created_at < NOW() - INTERVAL '5 minutes'
+	`
+	_, err := r.pool.Exec(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to delete inactive table validations: %w", err)
+	}
+	return nil
+}
+
+func (r *orderRepo) DeleteInApprovedOrders(ctx context.Context) error {
+	// Step 1: Fetch table_session_id AND table_number for stale not-approved orders
+	fetchQuery := `
+		SELECT DISTINCT o.table_session_id, ts.table_number
+		FROM orders o
+		JOIN table_session ts ON ts.id = o.table_session_id
+		WHERE o.status = 'not-approved'
+		AND o.created_at < NOW() - INTERVAL '15 minutes'
+		AND o.table_session_id IS NOT NULL
+	`
+	rows, err := r.pool.Query(ctx, fetchQuery)
+	if err != nil {
+		return fmt.Errorf("failed to fetch stale orders: %w", err)
+	}
+	defer rows.Close()
+
+	type sessionInfo struct {
+		sessionID   string
+		tableNumber int
+	}
+
+	var sessions []sessionInfo
+	for rows.Next() {
+		var s sessionInfo
+		if err := rows.Scan(&s.sessionID, &s.tableNumber); err != nil {
+			return fmt.Errorf("failed to scan session info: %w", err)
+		}
+		sessions = append(sessions, s)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("row iteration error: %w", err)
+	}
+
+	if len(sessions) == 0 {
+		return nil
+	}
+
+	// Build slices for bulk queries
+	sessionIDs := make([]string, len(sessions))
+	tableNumbers := make([]int, len(sessions))
+	for i, s := range sessions {
+		sessionIDs[i] = s.sessionID
+		tableNumbers[i] = s.tableNumber
+	}
+
+	// Step 2: Delete stale not-approved orders
+	deleteOrdersQuery := `
+		DELETE FROM orders
+		WHERE status = 'not-approved'
+		AND created_at < NOW() - INTERVAL '15 minutes'
+		AND table_session_id = ANY($1)
+	`
+	_, err = r.pool.Exec(ctx, deleteOrdersQuery, sessionIDs)
+	if err != nil {
+		return fmt.Errorf("failed to delete stale orders: %w", err)
+	}
+
+	// Step 3: Delete the table sessions
+	deleteSessionsQuery := `
+		DELETE FROM table_session
+		WHERE id = ANY($1)
+	`
+	_, err = r.pool.Exec(ctx, deleteSessionsQuery, sessionIDs)
+	if err != nil {
+		return fmt.Errorf("failed to delete table sessions: %w", err)
+	}
+
+	// Step 4: Reset table_status to 'empty' for all affected table numbers
+	updateTableStatusQuery := `
+		UPDATE table_status
+		SET status = 'empty'
+		WHERE table_number = ANY($1)
+	`
+	_, err = r.pool.Exec(ctx, updateTableStatusQuery, tableNumbers)
+	if err != nil {
+		return fmt.Errorf("failed to reset table status to empty: %w", err)
+	}
+
+	return nil
 }
 
 func (r *orderRepo) GetAllOrderHistoryForAdmin(ctx context.Context, limit, page int, fromDate, toDate *time.Time) (*OrderHistoryResponse, error) {
@@ -491,7 +660,6 @@ func (r *orderRepo) DeleteTableApprovalByID(ctx context.Context, id uuid.UUID) e
 	return nil
 }
 
-// TODO : run a go routein for dleign the table sesiosn in which teh waiter is not assigned or create time ois mroe than 10 miutes
 // ApproveTableByWaiter assigns a waiter to a table validation request
 func (r *orderRepo) CreateNewApprovalRequest(ctx context.Context, req *models.CustomerApprovalRequest) (*models.TableValidation, error) {
 
@@ -1483,7 +1651,6 @@ func (r *orderRepo) GetTableSessionByID(ctx context.Context, tableSessionID uuid
 	}, nil
 }
 
-// TODO: create a backgorund clearner of order or table sesison where the order are not approved since 10 minutes
 func (r *orderRepo) GetAllOrderRequest(ctx context.Context) ([]models.CustomerOrderRequest, error) {
 	// Get all occupied sessions that have at least one not-approved order with items
 	query := `
@@ -1721,7 +1888,6 @@ func (r *orderRepo) NewGetAllOrderRequest(ctx context.Context) ([]models.Custome
 	return result, nil
 }
 
-// TODO: instead of deleting reming from forntend send all the uiid to be deletd and deletei ndb no need to searc all qeury in db
 func (r *orderRepo) NewApproveCustomerRequest(ctx context.Context, approveOrder *models.ApproveOrderType) (err error) {
 	fmt.Println("items to be deleted : ", approveOrder.RemovedOrderItems)
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})

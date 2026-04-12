@@ -6,6 +6,9 @@ type Permission string
 
 // User Management
 const (
+	//Report N Analysis
+	ViewReports    Permission = "view:reports"
+	RefreshReports Permission = "refresh:reports"
 
 	//payments
 	ViewPayments   Permission = "view:payments"
@@ -111,6 +114,10 @@ var RolePermissions = map[models.Role][]Permission{
 		CreatePayments,
 		UpdatePayments,
 		DeletePayments,
+
+		//report n analysis
+		ViewReports,
+		RefreshReports,
 	},
 
 	models.RoleCashier: {
@@ -130,6 +137,8 @@ var RolePermissions = map[models.Role][]Permission{
 		CreatePayments,
 		UpdatePayments,
 		DeletePayments,
+
+		ViewReports,
 	},
 
 	models.RoleChef: {

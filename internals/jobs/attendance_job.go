@@ -36,6 +36,12 @@ func StartDailyAttendanceReview(repo repository.AttendanceRepo) {
 			} else {
 				log.Println("✅ Attendance auto-review completed successfully")
 			}
+			err = repo.DeleteInactiveLeaveRequestAttendance(ctx)
+			if err != nil {
+				log.Println("❌ Deleting inactive leave request attendance failed:", err)
+			} else {
+				log.Println("✅ Deleting inactive leave request attendance completed successfully")
+			}
 			cancel()
 		}
 	}()

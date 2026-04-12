@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/Abhishekh669/backend/internals/algorithm"
+	"github.com/Abhishekh669/backend/internals/lib"
 	"github.com/Abhishekh669/backend/internals/models"
+	"github.com/Abhishekh669/backend/internals/rbac"
 	"github.com/Abhishekh669/backend/internals/repository"
 	"github.com/gin-gonic/gin"
 )
@@ -16,15 +18,23 @@ type ReportHandler struct {
 	defaultReportCache *algorithm.DefaultRevenueCache
 }
 
-func NewReportHandler(repo repository.ReportRepo) *ReportHandler {
+func NewReportHandler(repo repository.ReportRepo, cache *algorithm.DefaultRevenueCache) *ReportHandler {
 	return &ReportHandler{
 		reportRepo:         repo,
-		defaultReportCache: algorithm.NewDefaultRevenueCache(repo),
+		defaultReportCache: cache,
 	}
 }
 
 func (h *ReportHandler) GetCustomRangeRawMaterialsReport(c *gin.Context) {
 	// Parse query parameters
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	fromStr := c.Query("from")
 	toStr := c.Query("to")
 
@@ -93,6 +103,14 @@ func (h *ReportHandler) GetCustomRangeRawMaterialsReport(c *gin.Context) {
 
 // GET /api/v2/reports/revenue/default
 func (h *ReportHandler) GetDefaultRawMaterialsReport(c *gin.Context) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	// Try to get from cache
 	cachedReport, isReady := h.defaultReportCache.GetRawMaterialReport()
 
@@ -126,6 +144,14 @@ func (h *ReportHandler) GetDefaultRawMaterialsReport(c *gin.Context) {
 }
 
 func (h *ReportHandler) GetCustomRangeStaffsReport(c *gin.Context) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	// Parse query parameters
 	fromStr := c.Query("from")
 	toStr := c.Query("to")
@@ -195,6 +221,14 @@ func (h *ReportHandler) GetCustomRangeStaffsReport(c *gin.Context) {
 
 // GET /api/v2/reports/revenue/default
 func (h *ReportHandler) GetDefaultStaffReport(c *gin.Context) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	// Try to get from cache
 	cachedReport, isReady := h.defaultReportCache.GetStaffReport()
 
@@ -228,6 +262,14 @@ func (h *ReportHandler) GetDefaultStaffReport(c *gin.Context) {
 }
 
 func (h *ReportHandler) GetCustomRangeTablesReport(c *gin.Context) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	// Parse query parameters
 	fromStr := c.Query("from")
 	toStr := c.Query("to")
@@ -297,6 +339,14 @@ func (h *ReportHandler) GetCustomRangeTablesReport(c *gin.Context) {
 
 // GET /api/v2/reports/revenue/default
 func (h *ReportHandler) GetDefaultTableReport(c *gin.Context) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	// Try to get from cache
 	cachedReport, isReady := h.defaultReportCache.GetTableReport()
 
@@ -330,6 +380,14 @@ func (h *ReportHandler) GetDefaultTableReport(c *gin.Context) {
 }
 
 func (h *ReportHandler) GetCustomRangeCustomerReport(c *gin.Context) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	// Parse query parameters
 	fromStr := c.Query("from")
 	toStr := c.Query("to")
@@ -400,6 +458,14 @@ func (h *ReportHandler) GetCustomRangeCustomerReport(c *gin.Context) {
 
 // GET /api/v2/reports/revenue/default
 func (h *ReportHandler) GetDefaultCustomerReport(c *gin.Context) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	// Try to get from cache
 	cachedReport, isReady := h.defaultReportCache.GetCustomerReport()
 
@@ -433,6 +499,14 @@ func (h *ReportHandler) GetDefaultCustomerReport(c *gin.Context) {
 }
 
 func (h *ReportHandler) GetCustomRangeSalesReport(c *gin.Context) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	// Parse query parameters
 	fromStr := c.Query("from")
 	toStr := c.Query("to")
@@ -503,6 +577,14 @@ func (h *ReportHandler) GetCustomRangeSalesReport(c *gin.Context) {
 
 // GET /api/v2/reports/revenue/default
 func (h *ReportHandler) GetDefaultSalesReport(c *gin.Context) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	// Try to get from cache
 	cachedReport, isReady := h.defaultReportCache.GetSalesReport()
 
@@ -538,6 +620,14 @@ func (h *ReportHandler) GetDefaultSalesReport(c *gin.Context) {
 // GetDefaultRevenueReport returns default report (7 days, 7 weeks, 7 months, 7 years) - CACHED
 // GET /api/v2/reports/revenue/default
 func (h *ReportHandler) GetDefaultRevenueReport(c *gin.Context) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	// Try to get from cache
 	cachedReport, isReady := h.defaultReportCache.GetRevenueReport()
 
@@ -573,6 +663,14 @@ func (h *ReportHandler) GetDefaultRevenueReport(c *gin.Context) {
 // GetCustomRangeRevenueReport returns custom range report with pagination - DIRECT DB (NO CACHE)
 // GET /api/v2/reports/revenue/custom?from=2024-01-01&to=2024-12-31&page=0&limit=10
 func (h *ReportHandler) GetCustomRangeRevenueReport(c *gin.Context) {
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
 	// Parse query parameters
 	fromStr := c.Query("from")
 	toStr := c.Query("to")
@@ -641,18 +739,36 @@ func (h *ReportHandler) GetCustomRangeRevenueReport(c *gin.Context) {
 	})
 }
 
-// RefreshDefaultReportCache manually refreshes the default report cache (admin only)
-// POST /api/v2/reports/revenue/default/refresh
 func (h *ReportHandler) RefreshDefaultReportCache(c *gin.Context) {
-	// TODO: Add admin auth check here
-	// Example: if !isAdmin(c) { c.JSON(403, gin.H{"error": "unauthorized"}); return }
 
-	go h.defaultReportCache.ReloadFromDB()
+	_, err := lib.HasPermissionCheck(c, rbac.ViewReports)
+	if err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":   "user not authorized to refresh reports",
+			"success": false,
+		})
+		return
+	}
+	twoHoursAgo := time.Now().Add(-1 * time.Hour)
+	if h.defaultReportCache.GetLastUpdated().After(twoHoursAgo) {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "cache was refreshed less than 1 hours ago, please wait before refreshing again",
+			"success": false,
+		})
+		return
+	}
+	err = h.defaultReportCache.ReloadFromDB()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":   "failed to refresh cache: " + err.Error(),
+			"success": false,
+		})
+		return
+	}
 
-	c.Header("X-Cache-Is-Refreshing", "true")
 	c.JSON(http.StatusAccepted, gin.H{
-		"status":  "refresh_started",
-		"message": "Default report cache refresh has been triggered",
+		"message": "successfully refreshed",
+		"success": true,
 	})
 }
 

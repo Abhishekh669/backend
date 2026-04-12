@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/Abhishekh669/backend/internals/database"
@@ -18,6 +19,7 @@ const guestPhone = "9800000000"
 
 // PaymentRepo interface
 type PaymentRepo interface {
+	ResetExpiredUserTokens(ctx context.Context) error
 	DeleteOrderByCashier(ctx context.Context, orderId uuid.UUID) error
 	GetAllOrderDetailsForCashierByOrderId(ctx context.Context, orderId uuid.UUID) (*models.PaymentDetailsForCashierWithDiscount, error)
 	GetAllApprovedOrdersForCashier(ctx context.Context) ([]models.GetOrderDetailsForCashier, error)
@@ -36,6 +38,27 @@ func (r *paymentRepo) DeleteOrderByCashier(ctx context.Context, orderId uuid.UUI
 	if err != nil {
 		return fmt.Errorf("failed to delete order: %w", err)
 	}
+	return nil
+}
+
+func (r *paymentRepo) ResetExpiredUserTokens(ctx context.Context) error {
+	query := `
+		UPDATE user_tokens
+		SET total_tokens = 0,
+			updated_at = NOW()
+		WHERE updated_at < NOW() - INTERVAL '1 month'
+		AND total_tokens > 0
+	`
+	result, err := r.pool.Exec(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to reset expired user tokens: %w", err)
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected > 0 {
+		log.Printf("🪙 [OrderJobs] Reset tokens for %d expired users", rowsAffected)
+	}
+
 	return nil
 }
 

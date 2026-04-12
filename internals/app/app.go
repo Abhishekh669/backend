@@ -82,7 +82,7 @@ func New() (*App, error) {
 
 	reportRepo := repository.NewReportRepo()
 	reportCache := algorithm.NewDefaultRevenueCache(reportRepo)
-	reportHandler := handlers.NewReportHandler(reportRepo)
+	reportHandler := handlers.NewReportHandler(reportRepo, reportCache) // pass same cache
 
 	return &App{
 		UserRepo:    userRepo,

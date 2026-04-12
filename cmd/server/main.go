@@ -76,7 +76,8 @@ func main() {
 
 	// ── Nightly report refresh job (00:05 every night) ─────────────────────────
 	jobs.StartNightlyReportRefresh(application.ReportCache)
-
+	jobs.StartAllOrderRelatedJobs(application.OrderRepo)
+	jobs.StartTokenCleanupJob(application.PaymentRepo)
 	// ── Existing jobs ──────────────────────────────────────────────────────────
 	jobs.StartDailyAttendanceReview(application.AttendanceRepo)
 
