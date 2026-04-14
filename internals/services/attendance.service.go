@@ -78,8 +78,6 @@ func (s *attendanceService) GetAllAttendanceRequestLeaveByUserIdService(c *gin.C
 		return nil, errors.New("failed to get employee id")
 	}
 
-	fmt.Println("iam now calling bd seciton ")
-
 	return s.repo.GetAttendanceLeaveRequestByUserId(c.Request.Context(), userId, query.Limit, query.Page, query.FromDate, query.ToDate, (*models.LeaveStatus)(&query.Status))
 }
 
@@ -107,26 +105,31 @@ func (s *attendanceService) AcceptLeaveAttendanceByAdmin(c *gin.Context, leaveId
 		return err
 	}
 
-	emailData := lib.LeaveEmailData{
-		EmployeeName:      res.EmployeeName,
-		EmployeeEmail:     res.EmployeeEmail,
-		Status:            models.LeaveApproved,
-		StartDate:         res.StartDate,
-		EndDate:           res.EndDate,
-		Message:           res.Message,
-		SupervisorMessage: res.SupervisorMessage,
-	}
+	// Send email asynchronously to not block the response
+	go func() {
+		emailData := lib.LeaveEmailData{
+			EmployeeName:      res.EmployeeName,
+			EmployeeEmail:     res.EmployeeEmail,
+			Status:            models.LeaveApproved,
+			StartDate:         res.StartDate,
+			EndDate:           res.EndDate,
+			Message:           res.Message,
+			SupervisorMessage: res.SupervisorMessage,
+		}
 
-	mailService := lib.NewMailService(lib.EmailConfig{
-		SMTPHost:       config.AppConfig.SMTPHost,
-		SMTPPort:       config.AppConfig.SMTPPort,
-		SenderEmail:    config.AppConfig.SMTPEmail,
-		SenderPassword: config.AppConfig.SMTPPassword,
-	})
+		mailService := lib.NewMailService(lib.EmailConfig{
+			SMTPHost:       config.AppConfig.SMTPHost,
+			SMTPPort:       config.AppConfig.SMTPPort,
+			SenderEmail:    config.AppConfig.SMTPEmail,
+			SenderPassword: config.AppConfig.SMTPPassword,
+		})
 
-	if err := mailService.SendLeaveStatusEmail(res.EmployeeEmail, emailData); err != nil {
-		log.Printf("failed to send leave approval email to %s: %v", res.EmployeeEmail, err)
-	}
+		if err := mailService.SendLeaveStatusEmail(res.EmployeeEmail, emailData); err != nil {
+			log.Printf("ERROR: failed to send leave approval email to %s: %v", res.EmployeeEmail, err)
+		} else {
+			log.Printf("SUCCESS: leave approval email sent to %s", res.EmployeeEmail)
+		}
+	}()
 
 	return nil
 }
@@ -146,26 +149,29 @@ func (s *attendanceService) CancelLeaveAttendanceByAdmin(c *gin.Context, leaveId
 	if err != nil {
 		return err
 	}
-	emailData := lib.LeaveEmailData{
-		EmployeeName:      res.EmployeeName,
-		EmployeeEmail:     res.EmployeeEmail,
-		Status:            models.LeaveRejected,
-		StartDate:         res.StartDate,
-		EndDate:           res.EndDate,
-		Message:           res.Message,
-		SupervisorMessage: res.SupervisorMessage,
-	}
 
-	mailService := lib.NewMailService(lib.EmailConfig{
-		SMTPHost:       config.AppConfig.SMTPHost,
-		SMTPPort:       config.AppConfig.SMTPPort,
-		SenderEmail:    config.AppConfig.SMTPEmail,
-		SenderPassword: config.AppConfig.SMTPPassword,
-	})
+	go func() {
+		emailData := lib.LeaveEmailData{
+			EmployeeName:      res.EmployeeName,
+			EmployeeEmail:     res.EmployeeEmail,
+			Status:            models.LeaveRejected,
+			StartDate:         res.StartDate,
+			EndDate:           res.EndDate,
+			Message:           res.Message,
+			SupervisorMessage: res.SupervisorMessage,
+		}
 
-	if err := mailService.SendLeaveStatusEmail(res.EmployeeEmail, emailData); err != nil {
-		log.Printf("failed to send leave approval email to %s: %v", res.EmployeeEmail, err)
-	}
+		mailService := lib.NewMailService(lib.EmailConfig{
+			SMTPHost:       config.AppConfig.SMTPHost,
+			SMTPPort:       config.AppConfig.SMTPPort,
+			SenderEmail:    config.AppConfig.SMTPEmail,
+			SenderPassword: config.AppConfig.SMTPPassword,
+		})
+
+		if err := mailService.SendLeaveStatusEmail(res.EmployeeEmail, emailData); err != nil {
+			log.Printf("failed to send leave approval email to %s: %v", res.EmployeeEmail, err)
+		}
+	}()
 
 	return nil
 }

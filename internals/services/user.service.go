@@ -111,10 +111,13 @@ func (s *userService) CreateForgetPasswordSession(ctx *gin.Context, email string
 			return "", errors.New("failed to update password reset session")
 		}
 
-		err = lib.SendForgetPasswordTokenToEmail(email, pin)
-		if err != nil {
-			log.Println("failed to send email with reset token", err)
-		}
+		go func() {
+
+			err = lib.SendForgetPasswordTokenToEmail(email, pin)
+			if err != nil {
+				log.Println("failed to send email with reset token", err)
+			}
+		}()
 		return token, nil
 
 	}
@@ -133,11 +136,12 @@ func (s *userService) CreateForgetPasswordSession(ctx *gin.Context, email string
 	if err != nil {
 		return "", errors.New("failed to create password reset session")
 	}
-
-	err = lib.SendForgetPasswordTokenToEmail(email, pin)
-	if err != nil {
-		log.Println("failed to send email with reset token ", err)
-	}
+	go func() {
+		err = lib.SendForgetPasswordTokenToEmail(email, pin)
+		if err != nil {
+			log.Println("failed to send email with reset token ", err)
+		}
+	}()
 
 	return token, nil
 }
