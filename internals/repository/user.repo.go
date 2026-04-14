@@ -11,6 +11,7 @@ import (
 	"github.com/Abhishekh669/backend/internals/database"
 	"github.com/Abhishekh669/backend/internals/lib"
 	"github.com/Abhishekh669/backend/internals/models"
+	"github.com/gofrs/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -49,6 +50,13 @@ type UserStats struct {
 // If you want to include actual users from last week
 
 type UserRepo interface {
+	UpdateExistingPasswordSession(ctx context.Context, sessionId uuid.UUID, token, pin string) error
+	GetForgetPasswordSessionByEmail(ctx context.Context, email string) (*models.PasswordResetRequest, error)
+	CleanupExpiredNUsedForgetPasswordSessions(ctx context.Context) error
+	MarkForgetPasswordSessionUsed(ctx context.Context, sessionId uuid.UUID) error
+	GetForgetPasswordSession(ctx context.Context, email string, token string) (*models.PasswordResetRequest, error)
+	CreateForgetPasswordSession(ctx context.Context, email string, token string, pin string) error
+	UpdateUserPassword(ctx context.Context, userId uuid.UUID, newPassword string) error
 	GetUserDataByName(ctx context.Context, userName string) ([]models.UserTypeForAttendance, error)
 	UpdateUser(ctx context.Context, user *models.UpdateUserType) error
 	DeleteUser(c context.Context, userIds []string, requesterRole models.Role) error
@@ -69,6 +77,193 @@ var (
 	ErrEmailExists = errors.New("email already exists")
 	ErrPhoneExists = errors.New("phone number already exists")
 )
+
+func (r *userRepo) CleanupExpiredNUsedForgetPasswordSessions(ctx context.Context) error {
+
+	query := `
+		DELETE FROM password_reset_requests
+		WHERE created_at < NOW() - INTERVAL '15 minutes'
+		   OR is_used = TRUE
+	`
+
+	result, err := r.pool.Exec(ctx, query)
+	if err != nil {
+		return err
+	}
+
+	rows := result.RowsAffected()
+
+	log.Printf("🧹 cleaned up %d expired/used password reset sessions", rows)
+
+	return nil
+}
+
+func (r *userRepo) MarkForgetPasswordSessionUsed(ctx context.Context, sessionId uuid.UUID) error {
+	query := `
+		UPDATE password_reset_requests
+		SET is_used = true, updated_at = NOW()
+		WHERE id = $1 AND is_used = FALSE
+	`
+
+	result, err := r.pool.Exec(ctx, query, sessionId)
+	if err != nil {
+		return fmt.Errorf("failed to mark session as used: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("session not found")
+	}
+
+	return nil
+}
+
+func (r *userRepo) UpdateExistingPasswordSession(ctx context.Context, sessionId uuid.UUID, token, pin string) error {
+	query := `
+		UPDATE password_reset_requests
+		SET session_token =$1, pin_code = $2, updated_at = NOW()
+		WHERE id = $3
+	`
+
+	result, err := r.pool.Exec(ctx, query, token, pin, sessionId)
+	if err != nil {
+		return fmt.Errorf("failed to mark session as used: %w", err)
+	}
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("session not found")
+	}
+
+	return nil
+}
+
+func (r *userRepo) GetForgetPasswordSessionByEmail(ctx context.Context, email string) (*models.PasswordResetRequest, error) {
+
+	query := `
+		SELECT
+			id,
+			email,
+			session_token,
+			pin_code,
+			is_used,
+			updated_at,
+			created_at
+		FROM password_reset_requests
+		WHERE email = $1
+ 	 AND is_used = FALSE
+	ORDER BY created_at DESC
+	LIMIT 1
+	`
+
+	var session models.PasswordResetRequest
+
+	err := r.pool.QueryRow(ctx, query, email).Scan(
+		&session.ID,
+		&session.Email,
+		&session.SessionToken,
+		&session.PinCode,
+		&session.IsUsed,
+		&session.UpdatedAt,
+		&session.CreatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil // not found (clean handling)
+		}
+		return nil, err
+	}
+
+	return &session, nil
+}
+
+func (r *userRepo) GetForgetPasswordSession(ctx context.Context, email string, token string) (*models.PasswordResetRequest, error) {
+	query := `
+		SELECT
+			id,
+			email,
+			session_token,
+			pin_code,
+			is_used,
+			updated_at,
+			created_at
+		FROM password_reset_requests
+		WHERE email = $1
+		  AND session_token = $2
+	
+		LIMIT 1
+	`
+
+	var session models.PasswordResetRequest
+
+	err := r.pool.QueryRow(ctx, query, email, token).Scan(
+		&session.ID,
+		&session.Email,
+		&session.SessionToken,
+		&session.PinCode,
+		&session.IsUsed,
+		&session.UpdatedAt,
+		&session.CreatedAt,
+	)
+
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, nil // not found (clean handling)
+		}
+		return nil, err
+	}
+
+	return &session, nil
+}
+
+func (r *userRepo) CreateForgetPasswordSession(ctx context.Context, email string, token string, pin string) error {
+	fmt.Println("thisis hte pin hoitw : ", pin)
+	query := `
+		INSERT INTO password_reset_requests (
+			email,
+			session_token,
+			pin_code,
+			created_at
+		)
+		VALUES ($1, $2, $3, NOW())
+	`
+
+	_, err := r.pool.Exec(ctx, query,
+		email,
+		token,
+		pin, // ensures 6-digit format (e.g., 000123)
+	)
+
+	if err != nil {
+		log.Printf("❌ failed to create forget password session: %v", err)
+		return errors.New("failed to create password reset session")
+	}
+
+	return nil
+}
+
+func (r *userRepo) UpdateUserPassword(ctx context.Context, userId uuid.UUID, newPassword string) error {
+
+	query := `
+		UPDATE users
+		SET 
+			password = $1,
+			last_password_reset_at = $2,
+			updated_at = NOW()
+		WHERE id = $3
+	`
+
+	result, err := r.pool.Exec(ctx, query, newPassword, time.Now().UnixMilli(), userId)
+	if err != nil {
+		return fmt.Errorf("failed to update user password: %w", err)
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("user not found")
+	}
+
+	return nil
+}
 
 func (r *userRepo) GetUserDataByName(ctx context.Context, userName string) ([]models.UserTypeForAttendance, error) {
 	// Define the query to fetch user data
@@ -577,6 +772,8 @@ func (r *userRepo) LoginUser(email, password string, ctx context.Context) (*mode
 		log.Println("user not found")
 		return nil, errors.New(failedMessage)
 	}
+
+	fmt.Println("this isthe db user : ", dbUser)
 
 	status, err := lib.CheckPasswordHash(password, dbUser.Password)
 	if err != nil {

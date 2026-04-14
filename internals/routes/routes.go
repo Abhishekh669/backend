@@ -16,5 +16,5 @@ func SetUpRoutes(app *gin.Engine, appConfig *app.App, newCache *algorithm.MenuCa
 	OrderServiceRouter(apiGroup, appConfig)
 	PaymentRouter(apiGroup, appConfig)
 	ReportServiceRouter(apiGroup, appConfig)
-
+	SettingServiceRouter(apiGroup, appConfig)
 }

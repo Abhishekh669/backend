@@ -3,6 +3,8 @@ package models
 import (
 	"errors"
 	"time"
+
+	"github.com/gofrs/uuid"
 )
 
 type Gender string
@@ -24,6 +26,18 @@ const (
 	RoleManager       Role = "manager"
 	RoleCustomer      Role = "customer"
 )
+
+type PasswordResetRequest struct {
+	ID           uuid.UUID `json:"id" db:"id"`
+	Email        string    `json:"email" db:"email"`
+	SessionToken string    `json:"session_token" db:"session_token"`
+	PinCode      string    `json:"pin_code" db:"pin_code"`
+
+	IsUsed    bool      `json:"is_used" db:"is_used"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
 
 type UserType struct {
 	Id                  string    `json:"id" db:"id"`

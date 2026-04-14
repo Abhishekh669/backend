@@ -78,6 +78,7 @@ func main() {
 	jobs.StartNightlyReportRefresh(application.ReportCache)
 	jobs.StartAllOrderRelatedJobs(application.OrderRepo)
 	jobs.StartTokenCleanupJob(application.PaymentRepo)
+	jobs.StartForgetPasswordCleanupJob(application.UserRepo)
 	// ── Existing jobs ──────────────────────────────────────────────────────────
 	jobs.StartDailyAttendanceReview(application.AttendanceRepo)
 

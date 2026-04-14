@@ -21,6 +21,114 @@ var (
 	defaultOffset = 0
 )
 
+type UserPassUpdateType struct {
+	NewPassword string `json:"new_password" binding:"required"`
+	OldPassword string `json:"old_password" binding:"required"`
+}
+
+type CreateSessionType struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type CheckPinType struct {
+	Email       string `json:"email" binding:"required,email"`
+	Token       string `json:"token" binding:"required"`
+	Pin         string `json:"pin" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required"`
+}
+
+func (h *UserHandler) GetForgetPasswordSessionHandler(c *gin.Context) {
+	token := c.Query("token")
+	email := c.Query("email")
+
+	if email == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "email is required", "success": false})
+		return
+	}
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token is required", "success": false})
+		return
+	}
+
+	session, err := h.userService.GetForgetPasswordSession(c, token, email)
+	fmt.Println("thisis forget passwor4d sesiosn : ", session, err)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"session": session, "success": true})
+}
+
+func (h *UserHandler) CreateForgetPasswordSessionHandler(c *gin.Context) {
+
+	var data CreateSessionType
+	if err := c.ShouldBindJSON(&data); err != nil {
+		fmt.Println("error in binding", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	if data.Email == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "email is required", "success": false})
+		return
+	}
+
+	token, err := h.userService.CreateForgetPasswordSession(c, data.Email)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"token": token, "success": true})
+}
+
+func (h *UserHandler) CheckForgetPasswordPinHandler(c *gin.Context) {
+	var data CheckPinType
+	if err := c.ShouldBindJSON(&data); err != nil {
+		fmt.Println("error in binding", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	if data.Email == "" || data.Token == "" || data.Pin == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "email, token and pin are required", "success": false})
+		return
+	}
+
+	valid, err := h.userService.CheckForgetPasswordPin(c, data.Pin, data.Token, data.Email, data.NewPassword)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	if !valid {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token or pin", "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "pin verified successfully", "success": true})
+}
+
+func (h *UserHandler) UpdateUserPasswordHandler(c *gin.Context) {
+	var data UserPassUpdateType
+	if err := c.ShouldBindJSON(&data); err != nil {
+		fmt.Println("error in binding", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	err := h.userService.UpdateUserPassword(c, data.NewPassword, data.OldPassword)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "password updated successfully",
+		"success": true,
+	})
+}
+
 func (h *UserHandler) GetUserByNameHandler(c *gin.Context) {
 	userName := c.Query("userName")
 	if userName == "" {

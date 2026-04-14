@@ -42,6 +42,10 @@ type App struct {
 	ReportRepo    repository.ReportRepo
 	ReportCache   *algorithm.DefaultRevenueCache
 	ReportHandler handlers.ReportHandler
+
+	SettingRepo    repository.SettingRepo
+	SettingService services.SettingService
+	SettingHandler handlers.SettingHandler
 }
 
 func New() (*App, error) {
@@ -84,6 +88,10 @@ func New() (*App, error) {
 	reportCache := algorithm.NewDefaultRevenueCache(reportRepo)
 	reportHandler := handlers.NewReportHandler(reportRepo, reportCache) // pass same cache
 
+	settingRepo := repository.NewSettingRepository()
+	settingService := services.NewSettingService(settingRepo)
+	settingHandler := handlers.NewSettingHandler(settingService)
+
 	return &App{
 		UserRepo:    userRepo,
 		UserService: userService,
@@ -116,5 +124,9 @@ func New() (*App, error) {
 		ReportRepo:    reportRepo,
 		ReportCache:   reportCache,
 		ReportHandler: *reportHandler,
+
+		SettingRepo:    settingRepo,
+		SettingService: settingService,
+		SettingHandler: *settingHandler,
 	}, nil
 }

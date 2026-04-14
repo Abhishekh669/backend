@@ -421,6 +421,70 @@ CREATE INDEX IF NOT EXISTS idx_customer_streaks_last_visit
 ON customer_streaks(last_visit);
 		`,
 	},
+	{
+		Name: "restaurant_information",
+		Schema: `
+
+    -- Restaurant Basic Information
+    CREATE TABLE IF NOT EXISTS restaurant_information (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		singleton_key BOOLEAN NOT NULL DEFAULT TRUE UNIQUE,
+      name TEXT NOT NULL,
+      slogan TEXT,
+      logo_url TEXT,
+
+      phone TEXT,
+      email TEXT,
+
+      address TEXT,
+      country TEXT,
+      state TEXT,
+      city TEXT,
+
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    -- Indexes
+   CREATE INDEX IF NOT EXISTS idx_restaurant_information_name
+ON restaurant_information(name);
+
+  `,
+	},
+	{
+		Name: "password_reset_requests",
+		Schema: `
+
+		CREATE TABLE IF NOT EXISTS password_reset_requests (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+			email VARCHAR(100) NOT NULL,
+
+			session_token TEXT NOT NULL UNIQUE,
+
+			pin_code VARCHAR(6) NOT NULL,
+
+			is_used BOOLEAN NOT NULL DEFAULT FALSE,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE UNIQUE INDEX IF NOT EXISTS uq_pwd_reset_active_email
+		ON password_reset_requests(email)
+		WHERE is_used = FALSE;
+
+		-- Composite index for lookup (IMPORTANT for your flow)
+		CREATE INDEX IF NOT EXISTS idx_pwd_reset_email_session
+		ON password_reset_requests(email, session_token);
+
+		-- Optional: faster cleanup / scanning old requests
+		CREATE INDEX IF NOT EXISTS idx_pwd_reset_created_at
+		ON password_reset_requests(created_at);
+
+		
+	`,
+	},
 }
 
 func CreatePostgresTables(ctx context.Context, postgresPool *pgxpool.Pool) error {
@@ -432,6 +496,9 @@ func CreatePostgresTables(ctx context.Context, postgresPool *pgxpool.Pool) error
 		if _, err := postgresPool.Exec(ctx, t.Schema); err != nil {
 			return fmt.Errorf("failed to create table %s: %w", t.Name, err)
 		}
+	}
+	if err := seedRestaurantInformation(ctx, postgresPool); err != nil {
+		return fmt.Errorf("failed to seed restaurant information: %w", err)
 	}
 	return nil
 }
@@ -450,4 +517,37 @@ func ValidateTableName(tableName string) error {
 	}
 
 	return nil
+}
+
+func seedRestaurantInformation(ctx context.Context, db *pgxpool.Pool) error {
+
+	query := `
+		INSERT INTO restaurant_information (
+			name,
+			slogan,
+			logo_url,
+			phone,
+			email,
+			address,
+			country,
+			state,
+			city
+		)
+		SELECT
+			'My Restaurant',
+			'Best Food in Town',
+			NULL,
+			NULL,
+			NULL,
+			'Kathmandu',
+			'Nepal',
+			'Bagmati',
+			'Kathmandu'
+		WHERE NOT EXISTS (
+			SELECT 1 FROM restaurant_information
+		);
+	`
+
+	_, err := db.Exec(ctx, query)
+	return err
 }

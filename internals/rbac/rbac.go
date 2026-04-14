@@ -6,6 +6,12 @@ type Permission string
 
 // User Management
 const (
+
+	//InfoSetting
+	ViewRestaurantInformation   Permission = "view:restaurant_information"
+	UpdateRestaurantInformation Permission = "update:restaurant_information"
+	CreateRestaurantInformation Permission = "create:restaurant_information"
+
 	//Report N Analysis
 	ViewReports    Permission = "view:reports"
 	RefreshReports Permission = "refresh:reports"
@@ -118,6 +124,11 @@ var RolePermissions = map[models.Role][]Permission{
 		//report n analysis
 		ViewReports,
 		RefreshReports,
+
+		//InfoSetting
+		ViewRestaurantInformation,
+		UpdateRestaurantInformation,
+		CreateRestaurantInformation,
 	},
 
 	models.RoleCashier: {
@@ -139,6 +150,7 @@ var RolePermissions = map[models.Role][]Permission{
 		DeletePayments,
 
 		ViewReports,
+		ViewRestaurantInformation,
 	},
 
 	models.RoleChef: {
@@ -152,11 +164,13 @@ var RolePermissions = map[models.Role][]Permission{
 		ViewTable,
 		UpdateOrder,
 		ViewOrder,
+		ViewRestaurantInformation,
 	},
 
 	models.RoleDeliveryStaff: {
 		CancelLeaveRequest,
 		ViewAttendance,
+		ViewRestaurantInformation,
 	},
 
 	models.RoleWaiter: {
@@ -174,12 +188,15 @@ var RolePermissions = map[models.Role][]Permission{
 		CreatePayments,
 		UpdatePayments,
 		DeletePayments,
+
+		ViewRestaurantInformation,
 	},
 
 	models.RoleCustomer: {
 		ViewTable,
 		CreateOrder,
 		ViewOrder,
+		ViewRestaurantInformation,
 	},
 }
 
