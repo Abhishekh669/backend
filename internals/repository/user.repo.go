@@ -426,8 +426,8 @@ func (r *userRepo) DeleteUser(ctx context.Context, userIDs []string, requesterRo
 			return fmt.Errorf("failed to delete user")
 		}
 
-		// 🚫 Nobody can delete an admin
-		if role == models.RoleAdmin {
+		//only admin can modify admin account
+		if role == models.RoleAdmin && requesterRole != models.RoleAdmin {
 			return fmt.Errorf("admin users cannot be deleted")
 		}
 
@@ -437,13 +437,13 @@ func (r *userRepo) DeleteUser(ctx context.Context, userIDs []string, requesterRo
 		}
 	}
 
-	// ✅ Soft delete instead of hard delete
+	// ✅ Hard delete users
 	res, err := tx.Exec(ctx,
-		`UPDATE users SET is_active = false WHERE id = ANY($1)`,
+		`DELETE FROM users WHERE id = ANY($1)`,
 		userIDs,
 	)
 	if err != nil {
-		log.Printf("failed to deactivate users: %v", err)
+		log.Printf("failed to delete users: %v", err)
 		return fmt.Errorf("failed to delete user")
 	}
 
