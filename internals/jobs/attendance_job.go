@@ -10,15 +10,17 @@ import (
 
 func StartDailyAttendanceReview(repo repository.AttendanceRepo) {
 	go func() {
+		loc, _ := time.LoadLocation("Asia/Kathmandu")
+
 		for {
-			now := time.Now()
+			now := time.Now().In(loc)
 
 			next := time.Date(
 				now.Year(),
 				now.Month(),
 				now.Day(),
 				0, 5, 0, 0,
-				now.Location(),
+				loc,
 			)
 
 			if now.After(next) {
@@ -27,21 +29,34 @@ func StartDailyAttendanceReview(repo repository.AttendanceRepo) {
 
 			time.Sleep(time.Until(next))
 
-			log.Println("🕛 Running daily attendance auto-review job...")
+			log.Println("🕛 Running daily attendance jobs...")
 
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-			err := repo.AutoReviewIncompleteAttendance(ctx)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+
+			// 🔥 STEP 1: Create daily attendance (MOST IMPORTANT)
+			err := repo.CreateDailyAbsentAttendance(ctx)
+			if err != nil {
+				log.Println("❌ Create daily attendance failed:", err)
+			} else {
+				log.Println("✅ Daily attendance created successfully")
+			}
+
+			// 🔥 STEP 2: Auto review (your existing logic)
+			err = repo.AutoReviewIncompleteAttendance(ctx)
 			if err != nil {
 				log.Println("❌ Attendance auto-review failed:", err)
 			} else {
 				log.Println("✅ Attendance auto-review completed successfully")
 			}
+
+			// 🔥 STEP 3: Cleanup leave requests
 			err = repo.DeleteInactiveLeaveRequestAttendance(ctx)
 			if err != nil {
 				log.Println("❌ Deleting inactive leave request attendance failed:", err)
 			} else {
-				log.Println("✅ Deleting inactive leave request attendance completed successfully")
+				log.Println("✅ Leave cleanup completed successfully")
 			}
+
 			cancel()
 		}
 	}()

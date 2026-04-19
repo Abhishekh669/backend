@@ -15,6 +15,9 @@ func OrderServiceRouter(router *gin.RouterGroup, app *app.App) {
 	orderServiceRoute.GET("/get-request-by-table-num-n-phone", middlewares.CustomerMiddleware(app), app.Orderhandler.GetOrderRequestByTableNumberNPhone)
 	orderServiceRoute.GET("/get-request-by-table-session-id/:table-session-id", middlewares.UserMiddleware(), app.Orderhandler.GetOrderRequestByTableSessionIdHandler)
 
+	orderServiceRoute.POST("/get-menu-recommendations", middlewares.CustomerMiddleware(app), app.Orderhandler.GetMenuRecommendationsHandler)
+	orderServiceRoute.PUT("/refresh-recommendation-rules", middlewares.UserMiddleware(), app.Orderhandler.RefreshRecommendationRulesHandler)
+
 	orderServiceRoute.POST("/table-approval", app.Orderhandler.CreateNewApprovalRequestHandler)
 	orderServiceRoute.PUT("/table-approve-by-waiter", middlewares.UserMiddleware(), app.Orderhandler.ApproveTableByWaiterHandler)
 	orderServiceRoute.DELETE("/table-delete/:id", middlewares.UserMiddleware(), app.Orderhandler.DeleteTableValidationHandler)
@@ -29,5 +32,8 @@ func OrderServiceRouter(router *gin.RouterGroup, app *app.App) {
 	//mobile seciton
 	orderServiceRoute.PUT("/update-order-item", middlewares.UserMiddleware(), app.Orderhandler.UpdateOrderItemHandler)
 	orderServiceRoute.GET("/get-all-approval-requests", middlewares.UserMiddleware(), app.Orderhandler.GetAllApprovalRequestHandler)
+
+	//recommendation
+	orderServiceRoute.POST("/get-recommendation-menu", middlewares.CustomerMiddleware(app), app.Orderhandler.GetMenuRecommendationsHandler)
 
 }

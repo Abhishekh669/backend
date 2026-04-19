@@ -17,6 +17,8 @@ import (
 )
 
 type AttendanceRepo interface {
+	GetTodayUserAttendanceByUserId(c context.Context, empUUID uuid.UUID) (*models.Attendance, error)
+	CreateDailyAbsentAttendance(ctx context.Context) error
 	GetAllAttendanceLeaveRequestsHistory(c context.Context, limit, page int, fromDate *time.Time, toDate *time.Time, status *models.LeaveStatus) (*AttendanceLeaveByUserResponse, error)
 	AcceptLeaveRequestByAdmin(c context.Context, id uuid.UUID, checkedBy uuid.UUID) (*models.AttendanceLeaveResponse, error)
 	GetAllAttendanceLeaveRequest(c context.Context) ([]models.AttendanceLeaveResponse, error)
@@ -59,6 +61,104 @@ type AttendanceLeaveByUserResponse struct {
 	Stats      *AttendanceLeaveByUserStats      `json:"stats"`
 }
 
+func (r *attendanceRepo) CreateDailyAbsentAttendance(ctx context.Context) error {
+
+	query := `
+		INSERT INTO attendance (
+			employee_id,
+			work_date,
+			check_in_time,
+			check_out_time,
+			status
+		)
+		SELECT 
+			u.id,
+			(NOW() AT TIME ZONE 'Asia/Kathmandu')::date,
+			NULL,
+			NULL,
+			'absent'
+		FROM users u
+		WHERE 
+			u.is_active = TRUE
+			AND u.role != 'customer'
+
+			-- ❗ Skip employees who are on approved leave today
+			AND NOT EXISTS (
+				SELECT 1 
+				FROM attendance_leave al
+				WHERE 
+					al.employee_id = u.id
+					AND al.status = 'approved'
+					AND (NOW() AT TIME ZONE 'Asia/Kathmandu') BETWEEN al.start_date AND al.end_date
+			)
+
+		ON CONFLICT (employee_id, work_date) DO NOTHING;
+	`
+
+	_, err := r.pool.Exec(ctx, query)
+	return err
+}
+func (r *attendanceRepo) GetTodayUserAttendanceByUserId(
+	c context.Context,
+	empUUID uuid.UUID,
+) (*models.Attendance, error) {
+
+	query := `
+		SELECT 
+			id,
+			employee_id,
+			work_date,
+			check_in_time,
+			check_out_time,
+			need_review,
+			status,
+			created_at,
+			updated_at
+		FROM attendance
+		WHERE employee_id = $1
+		AND work_date = CURRENT_DATE
+		LIMIT 1;
+	`
+
+	row := r.pool.QueryRow(c, query, empUUID)
+
+	var att models.Attendance
+
+	err := row.Scan(
+		&att.ID,
+		&att.EmployeeID,
+		&att.WorkDate,
+		&att.CheckInTime,
+		&att.CheckOutTime,
+		&att.NeedReview,
+		&att.Status,
+		&att.CreatedAt,
+		&att.UpdatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+
+			loc, _ := time.LoadLocation("Asia/Kathmandu")
+			now := time.Now().In(loc)
+
+			// 🔥 Return dummy attendance
+			return &models.Attendance{
+				EmployeeID:   empUUID,
+				WorkDate:     time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc),
+				CheckInTime:  nil,
+				CheckOutTime: nil,
+				NeedReview:   false,
+				Status:       models.StatusAbsent, // ✅ FIXED (not present)
+				CreatedAt:    now,
+				UpdatedAt:    now,
+			}, nil
+		}
+		return nil, err
+	}
+
+	return &att, nil
+}
 func (r *attendanceRepo) GetAllAttendanceLeaveRequestsHistory(c context.Context, limit, page int, fromDate *time.Time, toDate *time.Time, status *models.LeaveStatus) (*AttendanceLeaveByUserResponse, error) {
 	errMessage := "failed to get attendance leave requests"
 	offset := page * limit

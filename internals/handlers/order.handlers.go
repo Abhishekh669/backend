@@ -17,6 +17,56 @@ type OrderHandler struct {
 	orderService services.OrderService
 }
 
+type menuRecommendationRequest struct {
+	SelectedMenuItemIDs []string `json:"selected_menu_item_ids"`
+	Limit               int      `json:"limit"`
+}
+
+func (h *OrderHandler) GetMenuRecommendationsHandler(c *gin.Context) {
+	var req menuRecommendationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+
+	recommendation, err := h.orderService.GetMenuRecommendations(c.Request.Context(), req.SelectedMenuItemIDs, req.Limit)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":        true,
+		"menu_item_ids":  recommendation.MenuItemIDs,
+		"source":         recommendation.Source,
+		"selected_count": len(req.SelectedMenuItemIDs),
+	})
+}
+
+func (h *OrderHandler) RefreshRecommendationRulesHandler(c *gin.Context) {
+	if err := h.orderService.RefreshRecommendationRules(c); err != nil {
+		c.JSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "recommendation rules refreshed successfully",
+	})
+}
+
 func (h *OrderHandler) GetAllOrderHistoryForAdminHandler(c *gin.Context) {
 	limitStr := c.Query("limit")
 	pageStr := c.Query("page")
@@ -317,6 +367,7 @@ func (h *OrderHandler) GetUnassignedTablesHandler(c *gin.Context) {
 
 func (h *OrderHandler) GetAllOrderStatusHandler(c *gin.Context) {
 	orderRequests, err := h.orderService.GetAllOrderStatusService(c)
+	fmt.Println("this are teh rodererqust : ", orderRequests)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error(), "success": false})
 		return

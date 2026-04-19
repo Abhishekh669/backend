@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Abhishekh669/backend/internals/algorithm"
 	"github.com/Abhishekh669/backend/internals/lib"
 	"github.com/Abhishekh669/backend/internals/models"
 	"github.com/Abhishekh669/backend/internals/rbac"
@@ -15,6 +16,8 @@ import (
 )
 
 type OrderService interface {
+	GetMenuRecommendations(ctx context.Context, selectedMenuItemIDs []string, limit int) (algorithm.Recommendation, error)
+	RefreshRecommendationRules(c *gin.Context) error
 	GetAllOrderHistoryForAdmin(c *gin.Context, limit, page int, fromDate, toDate *time.Time) (*repository.OrderHistoryResponse, error)
 	GetAllApprovalRequestService(c *gin.Context) ([]models.TableValidation, error)
 	UpdateOrderItemService(c *gin.Context, updateData *models.UpdateOrderItem) error
@@ -33,7 +36,8 @@ type OrderService interface {
 	CreateCustomerService(c *gin.Context, cusotmerOrder *models.CreateCustomerOrderRequest) error
 }
 type orderService struct {
-	repo repository.OrderRepo
+	repo     repository.OrderRepo
+	recCache *algorithm.CacheManager
 }
 
 type ReqStatus string
@@ -50,6 +54,35 @@ func (s *orderService) GetAllOrderHistoryForAdmin(c *gin.Context, limit, page in
 		return nil, errors.New("user not authorized")
 	}
 	return s.repo.GetAllOrderHistoryForAdmin(c.Request.Context(), limit, page, fromDate, toDate)
+}
+
+func (s *orderService) GetMenuRecommendations(ctx context.Context, selectedMenuItemIDs []string, limit int) (algorithm.Recommendation, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if s.recCache == nil || s.recCache.Get() == nil {
+		return algorithm.Recommendation{}, errors.New("recommendation cache is not ready")
+	}
+
+	exclude := make(map[string]bool, len(selectedMenuItemIDs))
+	for _, id := range selectedMenuItemIDs {
+		if id != "" {
+			exclude[id] = true
+		}
+	}
+
+	return s.recCache.Get().Recommend(ctx, selectedMenuItemIDs, exclude, limit), nil
+}
+
+func (s *orderService) RefreshRecommendationRules(c *gin.Context) error {
+	_, err := lib.HasPermissionCheck(c, rbac.UpdateOrder)
+	if err != nil {
+		return errors.New("user not authorized")
+	}
+	if s.recCache == nil {
+		return errors.New("recommendation cache not configured")
+	}
+	return s.recCache.Refresh(c.Request.Context())
 }
 
 func (s *orderService) GetAllApprovalRequestService(c *gin.Context) ([]models.TableValidation, error) {
@@ -202,8 +235,9 @@ func (s *orderService) CreateCustomerService(c *gin.Context, cusotmerOrder *mode
 	return s.repo.NewCreateCustomerOrder(c.Request.Context(), cusotmerOrder)
 }
 
-func NewOrderService(repo repository.OrderRepo) OrderService {
+func NewOrderService(repo repository.OrderRepo, recCache *algorithm.CacheManager) OrderService {
 	return &orderService{
-		repo: repo,
+		repo:     repo,
+		recCache: recCache,
 	}
 }

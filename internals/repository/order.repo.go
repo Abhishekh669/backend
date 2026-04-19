@@ -25,6 +25,8 @@ type OrderHistoryResponse struct {
 
 // OrderRepo interface defines all order-related operations
 type OrderRepo interface {
+	GetPopularItems(ctx context.Context, limit int) ([]string, error)
+	GetOrderItemsForAprioriAlgorithm(ctx context.Context) (OrderMenuItems, error)
 	DeleteStaleTableSessions(ctx context.Context) error
 	DeleteInActiveTableValidation(ctx context.Context) error
 	DeleteInApprovedOrders(ctx context.Context) error
@@ -55,6 +57,125 @@ type OrderRepo interface {
 // orderRepo implements OrderRepo interface
 type orderRepo struct {
 	pool *pgxpool.Pool
+}
+
+type OrderMenuItems map[string][]string
+
+func (r *orderRepo) GetPopularItems(ctx context.Context, limit int) ([]string, error) {
+	const popularQuery = `
+		SELECT   oi.menu_item_id
+		FROM     order_items oi
+		JOIN     orders o ON o.id = oi.order_id
+		WHERE    o.status      = 'completed'
+		  AND    o.created_at >= NOW() - INTERVAL '6 months'
+		GROUP BY oi.menu_item_id
+		ORDER BY COUNT(*) DESC
+		LIMIT    $1
+	`
+
+	rows, err := r.pool.Query(ctx, popularQuery, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query popular items: %w", err)
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		result = append(result, id)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration: %w", err)
+	}
+
+	// Ensure at least 10 items are returned
+	const minRequired = 10
+	if len(result) >= minRequired {
+		return result, nil
+	}
+
+	// How many random items do we need?
+	needed := minRequired - len(result)
+
+	// Build a subquery to exclude already selected IDs
+	excludeClause := ""
+	if len(result) > 0 {
+		excludeClause = "WHERE id NOT IN ("
+		for i, id := range result {
+			if i > 0 {
+				excludeClause += ","
+			}
+			excludeClause += "'" + id + "'"
+		}
+		excludeClause += ")"
+	}
+
+	randomQuery := fmt.Sprintf(`
+		SELECT id
+		FROM menu_items
+		%s
+		ORDER BY RANDOM()
+		LIMIT $1
+	`, excludeClause)
+
+	randRows, err := r.pool.Query(ctx, randomQuery, needed)
+	if err != nil {
+		// If random fetch fails, return what we have (don't break the whole operation)
+		return result, nil
+	}
+	defer randRows.Close()
+
+	for randRows.Next() {
+		var id string
+		if err := randRows.Scan(&id); err != nil {
+			return nil, err
+		}
+		result = append(result, id)
+	}
+	if err = randRows.Err(); err != nil {
+		return nil, fmt.Errorf("random rows iteration: %w", err)
+	}
+
+	return result, nil
+}
+
+func (r *orderRepo) GetOrderItemsForAprioriAlgorithm(ctx context.Context) (OrderMenuItems, error) {
+	query := `
+		SELECT
+			o.id          AS order_id,
+			oi.menu_item_id
+		FROM orders o
+		JOIN order_items oi ON oi.order_id = o.id
+		WHERE
+			o.status     = 'completed'
+			AND o.created_at >= NOW() - INTERVAL '6 months'
+		ORDER BY o.id, oi.menu_item_id
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("FetchLast6MonthsOrderItems: query failed: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(OrderMenuItems)
+
+	for rows.Next() {
+		var orderID, menuItemID string
+		if err := rows.Scan(&orderID, &menuItemID); err != nil {
+			return nil, fmt.Errorf("FetchLast6MonthsOrderItems: scan failed: %w", err)
+		}
+		result[orderID] = append(result[orderID], menuItemID)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("FetchLast6MonthsOrderItems: rows error: %w", err)
+	}
+
+	return result, nil
 }
 
 func (r *orderRepo) DeleteStaleTableSessions(ctx context.Context) error {

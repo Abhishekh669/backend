@@ -24,6 +24,22 @@ const (
 	AttendanceError   AttendanceStatus = "attendance_error"
 )
 
+func (h *AttendanceHandler) GetTodayUserAttendanceByUserIdHandler(c *gin.Context) {
+	userAttendance, err := h.attendanceService.GetTodayUserAttendanceById(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "failed to get attendance",
+			"success": false,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"attendance": userAttendance,
+		"success":    true,
+	})
+}
+
 func (h *AttendanceHandler) GetAllAttendanceLeaveRequestsHistoryHandler(c *gin.Context) {
 	var fromDate *time.Time
 	if fromDateStr := c.Query("startingDate"); fromDateStr != "" {

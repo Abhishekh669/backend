@@ -33,4 +33,6 @@ func AttendanceServiceRouter(router *gin.RouterGroup, app *app.App) {
 
 	attendanceServiceRoute.GET("/get-attendance-leave-history-by-user-id", middlewares.UserMiddleware(), app.AttendanceHandler.GetAllAttendanceLeaveRequestsByUserId)
 	attendanceServiceRoute.GET("/get-attendance-leave-history", middlewares.UserMiddleware(), app.AttendanceHandler.GetAllAttendanceLeaveRequestsHistoryHandler)
+
+	attendanceServiceRoute.GET("/get-today-attendance-by-id", middlewares.UserMiddleware(), app.AttendanceHandler.GetTodayUserAttendanceByUserIdHandler)
 }

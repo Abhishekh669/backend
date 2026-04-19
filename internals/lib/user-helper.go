@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 
 	"github.com/Abhishekh669/backend/internals/database"
 	"github.com/Abhishekh669/backend/internals/models"
@@ -13,11 +14,13 @@ import (
 )
 
 func GetUserInfoByEmail(email string, ctx context.Context) (*models.UserType, error) {
+	if email == "" {
+		return nil, errors.New("email cannot be empty")
+	}
 
 	pool, err := database.GetPostgresPool()
-
 	if err != nil {
-		return nil, errors.New("failed to connect to database")
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
 	query := `
@@ -60,43 +63,66 @@ func GetUserInfoByEmail(email string, ctx context.Context) (*models.UserType, er
 	}
 
 	return &user, nil
-
 }
 
 func HasPermissionCheck(c *gin.Context, action rbac.Permission) (*models.Role, error) {
+	// Get user email from context
 	currentUserEmail := c.GetString("user_email")
 	if currentUserEmail == "" {
-		return nil, fmt.Errorf("error not found")
+		log.Println("ERROR: user_email not found in context")
+		return nil, fmt.Errorf("unauthorized: user email not found in context")
 	}
+
+	fmt.Println("this is the current user email : ", currentUserEmail)
+
+	// Get last password reset at from context
 	val, exists := c.Get("last_password_reset_at")
 	var lastPasswordResetAt int64
 	if exists {
 		// Type assertion
 		ts, ok := val.(int64)
 		if !ok {
-			// fallback in case type is wrong
+			log.Printf("WARNING: last_password_reset_at has wrong type: %T, expected int64", val)
 			lastPasswordResetAt = 0
 		} else {
 			lastPasswordResetAt = ts
 		}
 	} else {
-		// fallback if key does not exist
 		lastPasswordResetAt = 0
 	}
+
+	// Get user info by email
 	currentUser, err := GetUserInfoByEmail(currentUserEmail, c.Request.Context())
 	if err != nil {
-		return &currentUser.Role, errors.New(err.Error())
+		log.Printf("ERROR: failed to get user info for email %s: %v", currentUserEmail, err)
+		return nil, fmt.Errorf("failed to get user info: %w", err)
 	}
 
+	// FIX: Check if currentUser is nil
 	if currentUser == nil {
-		return &currentUser.Role, fmt.Errorf("unauthorized user")
+		log.Printf("ERROR: user not found for email: %s", currentUserEmail)
+		return nil, fmt.Errorf("unauthorized: user not found")
 	}
 
+	// FIX: Check if Role is nil before accessing
+	if currentUser.Role == "" {
+		log.Printf("ERROR: user role is nil for user: %s", currentUserEmail)
+		return nil, fmt.Errorf("unauthorized: user role not assigned")
+	}
+
+	// Check permission
 	hasPermission := rbac.HasPermission(&currentUser.Role, action)
 
-	if !hasPermission || currentUser.LastPasswordResetAt != lastPasswordResetAt {
-		return &currentUser.Role, fmt.Errorf("unauthorized user")
+	// Check password reset timestamp
+	if !hasPermission {
+		log.Printf("WARNING: user %s does not have permission %v", currentUserEmail, action)
+		return nil, fmt.Errorf("unauthorized: insufficient permissions")
 	}
-	return &currentUser.Role, nil
 
+	if currentUser.LastPasswordResetAt != lastPasswordResetAt {
+		log.Printf("WARNING: password reset timestamp mismatch for user %s", currentUserEmail)
+		return nil, fmt.Errorf("unauthorized: session expired, please login again")
+	}
+
+	return &currentUser.Role, nil
 }

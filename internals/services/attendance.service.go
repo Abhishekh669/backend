@@ -15,6 +15,7 @@ import (
 )
 
 type AttendanceService interface {
+	GetTodayUserAttendanceById(c *gin.Context) (*models.Attendance, error)
 	GetAllAttendanceRequestLeaveHistoryService(c *gin.Context, query *models.AttendanceLeaveHistory) (*repository.AttendanceLeaveByUserResponse, error)
 	GetAllAttendanceRequestLeaveByUserIdService(c *gin.Context, query *models.AttendanceLeaveHistory) (*repository.AttendanceLeaveByUserResponse, error)
 	CancelLeaveAttendanceByAdmin(c *gin.Context, leaveId *uuid.UUID) error
@@ -56,6 +57,15 @@ func GetUserIDFromContext(c *gin.Context) (uuid.UUID, error) {
 	return userID, nil
 }
 
+func (s *attendanceService) GetTodayUserAttendanceById(c *gin.Context) (*models.Attendance, error) {
+	userId, err := GetUserIDFromContext(c)
+	if err != nil {
+		fmt.Println("user id is not present ")
+		return nil, errors.New("failed to get employee id")
+	}
+
+	return s.repo.GetTodayUserAttendanceByUserId(c.Request.Context(), userId)
+}
 func (s *attendanceService) GetAllAttendanceRequestLeaveHistoryService(c *gin.Context, query *models.AttendanceLeaveHistory) (*repository.AttendanceLeaveByUserResponse, error) {
 	_, err := lib.HasPermissionCheck(c, rbac.ViewAttendance)
 	if err != nil {

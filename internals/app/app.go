@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/Abhishekh669/backend/internals/algorithm"
 	"github.com/Abhishekh669/backend/internals/handlers"
@@ -31,9 +32,10 @@ type App struct {
 	TableService services.TableService
 	TableHandler handlers.TableHandler
 
-	OrderRepo    repository.OrderRepo
-	OrderService services.OrderService
-	Orderhandler handlers.OrderHandler
+	OrderRepo     repository.OrderRepo
+	OrderRecCache *algorithm.CacheManager
+	OrderService  services.OrderService
+	Orderhandler  handlers.OrderHandler
 
 	PaymentRepo    repository.PaymentRepo
 	PaymentService services.PaymentService
@@ -77,7 +79,8 @@ func New() (*App, error) {
 	tableHandler := handlers.NewTableHandler(tableService)
 
 	orderRepo := repository.NewOrderRepository()
-	orderService := services.NewOrderService(orderRepo)
+	orderRecCache := algorithm.NewCacheManager(nil, 48*time.Hour, orderRepo)
+	orderService := services.NewOrderService(orderRepo, orderRecCache)
 	orderHandler := handlers.NewOrderHandler(orderService)
 
 	paymentRepo := repository.NewPaymentRepository()
@@ -113,9 +116,10 @@ func New() (*App, error) {
 		TableService: tableService,
 		TableHandler: *tableHandler,
 
-		OrderRepo:    orderRepo,
-		OrderService: orderService,
-		Orderhandler: *orderHandler,
+		OrderRepo:     orderRepo,
+		OrderRecCache: orderRecCache,
+		OrderService:  orderService,
+		Orderhandler:  *orderHandler,
 
 		PaymentRepo:    paymentRepo,
 		PaymentService: paymentService,

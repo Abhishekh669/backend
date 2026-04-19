@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -30,6 +31,10 @@ func main() {
 	application, err := app.New()
 	if err != nil {
 		log.Fatalf("❌ Failed to initialize app: %v", err)
+	}
+
+	if err := application.OrderRecCache.Start(context.Background()); err != nil {
+		log.Printf("❌ [RecommendationCache] Failed to build initial cache: %v", err)
 	}
 
 	gin.SetMode(gin.ReleaseMode)
@@ -76,6 +81,7 @@ func main() {
 
 	// ── Nightly report refresh job (00:05 every night) ─────────────────────────
 	jobs.StartNightlyReportRefresh(application.ReportCache)
+	jobs.StartAssociationRulesRefresh(application.OrderRecCache, 48*time.Hour)
 	jobs.StartAllOrderRelatedJobs(application.OrderRepo)
 	jobs.StartTokenCleanupJob(application.PaymentRepo)
 	jobs.StartForgetPasswordCleanupJob(application.UserRepo)
