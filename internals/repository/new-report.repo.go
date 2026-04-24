@@ -73,6 +73,10 @@ const (
 	TopNRawMaterials             = 10
 )
 
+func (r *reportRepo) NewGetDashboardReport(ctx context.Context) {
+
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // DEFAULT REPORT
 // ────────────────────────────────────────────────────────────────────────────

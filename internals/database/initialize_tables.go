@@ -357,7 +357,21 @@ WHERE close_time IS NULL;
 	CREATE INDEX IF NOT EXISTS idx_payments_method 
 	ON payments(payment_method);
 	`,
-	}, {
+	}, 	{
+		Name: "user_expo_push_tokens",
+		Schema: `
+	CREATE TABLE IF NOT EXISTS user_expo_push_tokens (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		expo_push_token TEXT NOT NULL UNIQUE,
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_user_expo_push_tokens_user_id
+	ON user_expo_push_tokens(user_id);
+	`,
+	},
+	{
 		Name: "user_tokens",
 		Schema: `
 	CREATE TABLE IF NOT EXISTS user_tokens (

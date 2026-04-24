@@ -79,7 +79,6 @@ func (r *attendanceRepo) CreateDailyAbsentAttendance(ctx context.Context) error 
 			'absent'
 		FROM users u
 		WHERE 
-			u.is_active = TRUE
 			AND u.role != 'customer'
 
 			-- ❗ Skip employees who are on approved leave today
