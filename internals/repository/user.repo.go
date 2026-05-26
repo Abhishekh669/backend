@@ -50,6 +50,8 @@ type UserStats struct {
 // If you want to include actual users from last week
 
 type UserRepo interface {
+	CreateFeedBack(ctx context.Context, createFeedback *models.CreateCustomerFeedback) error
+	GetAllCustomerFeedback(ctx context.Context) ([]models.CustomerFeedback, error)
 	UpdateExistingPasswordSession(ctx context.Context, sessionId uuid.UUID, token, pin string) error
 	GetForgetPasswordSessionByEmail(ctx context.Context, email string) (*models.PasswordResetRequest, error)
 	CleanupExpiredNUsedForgetPasswordSessions(ctx context.Context) error
@@ -77,6 +79,88 @@ var (
 	ErrEmailExists = errors.New("email already exists")
 	ErrPhoneExists = errors.New("phone number already exists")
 )
+
+func (r *userRepo) GetAllCustomerFeedback(ctx context.Context) ([]models.CustomerFeedback, error) {
+
+	query := `
+		SELECT
+			id,
+			phone,
+			name,
+			text,
+			rating,
+			created_at
+		FROM customer_feedback
+		ORDER BY created_at DESC
+		LIMIT 50
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var feedbacks []models.CustomerFeedback
+
+	for rows.Next() {
+
+		var feedback models.CustomerFeedback
+
+		err := rows.Scan(
+			&feedback.ID,
+			&feedback.Phone,
+			&feedback.Name,
+			&feedback.Text,
+			&feedback.Rating,
+			&feedback.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		feedbacks = append(feedbacks, feedback)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return feedbacks, nil
+}
+
+func (r *userRepo) CreateFeedBack(ctx context.Context, createFeedback *models.CreateCustomerFeedback) error {
+
+	query := `
+		INSERT INTO customer_feedback (
+			phone,
+			name,
+			text,
+			rating
+		)
+		VALUES ($1, $2, $3, $4)
+	`
+
+	_, err := r.pool.Exec(
+		ctx,
+		query,
+		createFeedback.Phone,
+		createFeedback.Name,
+		createFeedback.Text,
+		createFeedback.Rating,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	log.Printf(
+		"📝 new customer feedback added from: %s",
+		createFeedback.Name,
+	)
+
+	return nil
+}
 
 func (r *userRepo) CleanupExpiredNUsedForgetPasswordSessions(ctx context.Context) error {
 

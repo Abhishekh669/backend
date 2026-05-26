@@ -37,6 +37,34 @@ type CheckPinType struct {
 	NewPassword string `json:"new_password" binding:"required"`
 }
 
+func (h *UserHandler) CreateFeedBackHandler(c *gin.Context) {
+
+	var data models.CreateCustomerFeedback
+	if err := c.ShouldBindJSON(&data); err != nil {
+		fmt.Println("error in binding", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "success": false})
+		return
+	}
+
+	err := h.userService.CreateCustomerFeedBack(c, &data)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to create feedback", "success": false})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "successfully submitted"})
+}
+
+func (h *UserHandler) GetCustomerFeedBacksHandler(c *gin.Context) {
+
+	session, err := h.userService.GetCustomerService(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to get session", "success": false})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"feedbacks": session, "success": true})
+}
+
 func (h *UserHandler) GetForgetPasswordSessionHandler(c *gin.Context) {
 	token := c.Query("token")
 	email := c.Query("email")

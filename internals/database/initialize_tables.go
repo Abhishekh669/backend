@@ -357,7 +357,7 @@ WHERE close_time IS NULL;
 	CREATE INDEX IF NOT EXISTS idx_payments_method 
 	ON payments(payment_method);
 	`,
-	}, 	{
+	}, {
 		Name: "user_expo_push_tokens",
 		Schema: `
 	CREATE TABLE IF NOT EXISTS user_expo_push_tokens (
@@ -497,6 +497,34 @@ ON restaurant_information(name);
 		ON password_reset_requests(created_at);
 
 		
+	`,
+	},
+	{
+		Name: "customer_feedback",
+		Schema: `
+		CREATE TABLE IF NOT EXISTS customer_feedback (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+			phone VARCHAR(20),
+
+			name VARCHAR(100) NOT NULL DEFAULT 'Unknown',
+
+			text TEXT NOT NULL,
+
+			rating INT NOT NULL DEFAULT 1
+			CHECK (rating BETWEEN 1 AND 5),
+
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_customer_feedback_created_at
+		ON customer_feedback(created_at DESC);
+
+		CREATE INDEX IF NOT EXISTS idx_customer_feedback_phone
+		ON customer_feedback(phone);
+
+		CREATE INDEX IF NOT EXISTS idx_customer_feedback_rating
+		ON customer_feedback(rating);
 	`,
 	},
 }

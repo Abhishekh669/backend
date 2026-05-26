@@ -15,9 +15,12 @@ func UserServiceRouter(router *gin.RouterGroup, app *app.App) {
 	userServiceRoute.GET("/get-all-users", middlewares.UserMiddleware(), app.UserHandler.GetUsersListHandler)
 	userServiceRoute.PUT("/update-user", middlewares.UserMiddleware(), app.UserHandler.UpdateUserHandler)
 	userServiceRoute.GET("/get-users-by-name", middlewares.UserMiddleware(), app.UserHandler.GetUserByNameHandler)
+	userServiceRoute.GET("/get-feedbacks", app.UserHandler.GetCustomerFeedBacksHandler)
 
 	userServiceRoute.PUT("/update-user-password", middlewares.UserMiddleware(), app.UserHandler.UpdateUserPasswordHandler)
 	userServiceRoute.GET("/get-forget-password-session", app.UserHandler.GetForgetPasswordSessionHandler)
 	userServiceRoute.POST("/create-forget-password-session", app.UserHandler.CreateForgetPasswordSessionHandler)
 	userServiceRoute.POST("/check-forget-password-pin", app.UserHandler.CheckForgetPasswordPinHandler)
+	userServiceRoute.POST("/create-feedback", app.UserHandler.CreateFeedBackHandler)
+
 }

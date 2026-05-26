@@ -27,6 +27,22 @@ const (
 	RoleCustomer      Role = "customer"
 )
 
+type CustomerFeedback struct {
+	ID        uuid.UUID `json:"id" db:"id"`
+	Phone     *string   `json:"phone,omitempty" db:"phone"`
+	Name      string    `json:"name" db:"name"`
+	Text      string    `json:"text" db:"text"`
+	Rating    int       `json:"rating" db:"rating"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+}
+
+type CreateCustomerFeedback struct {
+	Phone  *string `json:"phone,omitempty" db:"phone"`
+	Name   string  `json:"name" db:"name"`
+	Text   string  `json:"text" db:"text"`
+	Rating int     `json:"rating" db:"rating"`
+}
+
 type PasswordResetRequest struct {
 	ID           uuid.UUID `json:"id" db:"id"`
 	Email        string    `json:"email" db:"email"`

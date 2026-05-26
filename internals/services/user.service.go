@@ -16,6 +16,8 @@ import (
 )
 
 type UserService interface {
+	GetCustomerService(ctx *gin.Context) ([]models.CustomerFeedback, error)
+	CreateCustomerFeedBack(ctx *gin.Context, data *models.CreateCustomerFeedback) error
 	CreateForgetPasswordSession(ctx *gin.Context, email string) (string, error)
 	CheckForgetPasswordPin(ctx *gin.Context, pin, token, email string, newPassword string) (bool, error)
 	GetForgetPasswordSession(ctx *gin.Context, email, token string) (*models.PasswordResetRequest, error)
@@ -31,6 +33,13 @@ type UserService interface {
 
 type userService struct {
 	repo repository.UserRepo
+}
+
+func (s *userService) GetCustomerService(ctx *gin.Context) ([]models.CustomerFeedback, error) {
+	return s.repo.GetAllCustomerFeedback(ctx.Request.Context())
+}
+func (s *userService) CreateCustomerFeedBack(ctx *gin.Context, data *models.CreateCustomerFeedback) error {
+	return s.repo.CreateFeedBack(ctx.Request.Context(), data)
 }
 
 func (s *userService) CheckForgetPasswordPin(ctx *gin.Context, pin, token, email, newPassword string) (bool, error) {
